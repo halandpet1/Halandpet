@@ -24,10 +24,19 @@ enum Gender {
 enum AppointmentStatus {
   SCHEDULED
   CHECKED_IN
-  IN_PROGRESS
+  WAITING
+  CONSULTING
   COMPLETED
   CANCELLED
   NO_SHOW
+}
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  SKIPPED
+  COMPLETED
+  CANCELLED
 }
 
 enum MedicalItemType {
@@ -135,6 +144,10 @@ model User {
   createdPets      Pet[]           @relation("PetCreatedByUser")
   updatedPets      Pet[]           @relation("PetUpdatedByUser")
   appointments     Appointment[]
+  doctorSchedules  DoctorSchedule[]
+  queues           Queue[]
+  soapNotes        SoapNote[]
+  vitalSigns       VitalSignRecord[]
   medicalRecords   MedicalRecord[]
   createdInvoices  Invoice[]       @relation("InvoiceCreatedByUser")
   updatedInvoices  Invoice[]       @relation("InvoiceUpdatedByUser")
@@ -374,9 +387,60 @@ model Appointment {
   pet           Pet            @relation(fields: [petId], references: [id])
   doctor        User?          @relation(fields: [doctorId], references: [id])
   medicalRecord MedicalRecord?
+  queue         Queue?
 
   @@index([customerId])
   @@index([appointmentDate])
+  @@index([status])
+}
+
+model DoctorSchedule {
+  id               String    @id @default(cuid())
+  doctorId         String
+  scheduleDate     DateTime
+  startTime        String
+  endTime          String
+  breakStartTime   String?
+  breakEndTime     String?
+  status           String    @default("WORKING")
+  maxPatients      Int       @default(10)
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  createdBy        String?
+  updatedBy        String?
+
+  doctor User @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId])
+  @@index([scheduleDate])
+  @@index([status])
+}
+
+model Queue {
+  id                      String      @id @default(cuid())
+  appointmentId           String      @unique
+  doctorId                String?
+  queueDate               DateTime
+  queueNo                 Int
+  status                  QueueStatus @default(WAITING)
+  estimatedWaitingMinutes Int?
+  calledAt                DateTime?
+  completedAt             DateTime?
+  cancelledAt             DateTime?
+  notes                   String?
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+  deletedAt               DateTime?
+  createdBy               String?
+  updatedBy               String?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  doctor      User?       @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId])
+  @@index([queueDate])
   @@index([status])
 }
 
@@ -399,8 +463,57 @@ model MedicalRecord {
   doctor        User?               @relation(fields: [doctorId], references: [id])
   items         MedicalRecordItem[]
   prescriptions Prescription[]
+  soapNote      SoapNote?
+  vitalSigns    VitalSignRecord[]
 
   @@index([customerId])
+}
+
+model SoapNote {
+  id                     String    @id @default(cuid())
+  medicalRecordId        String    @unique
+  doctorId               String?
+  subjective             String?
+  objective              String?
+  assessment            String?
+  plan                   String?
+  consultationStartedAt  DateTime?
+  consultationEndedAt    DateTime?
+  isLocked               Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
+  createdBy              String?
+  updatedBy              String?
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  doctor        User?         @relation(fields: [doctorId], references: [id])
+
+  @@index([medicalRecordId])
+}
+
+model VitalSignRecord {
+  id                String    @id @default(cuid())
+  medicalRecordId   String
+  recordedAt        DateTime  @default(now())
+  temperature       Decimal?  @db.Decimal(5, 2)
+  weight            Decimal?  @db.Decimal(5, 2)
+  heartRate         Int?
+  respiratoryRate   Int?
+  bloodPressure     String?
+  bodyCondition     String?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  createdBy         String?
+  updatedBy         String?
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  doctor        User?         @relation(fields: [createdBy], references: [id])
+
+  @@index([medicalRecordId])
+  @@index([recordedAt])
 }
 
 model MedicalRecordItem {
