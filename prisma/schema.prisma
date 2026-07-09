@@ -1,0 +1,658 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  DOCTOR
+  CASHIER
+  STAFF
+  CUSTOMER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum MedicalItemType {
+  TREATMENT
+  MEDICINE
+}
+
+enum PrescriptionStatus {
+  PRESCRIBED
+  DISPENSED
+  CANCELLED
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  RETURN
+  OPNAME
+}
+
+enum StockMovementRef {
+  PURCHASE
+  SALES
+  MEDICAL
+  ADJUSTMENT
+  OPNAME
+  VOID
+  REFUND
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  PAID
+  PARTIAL
+  VOID
+  REFUNDED
+}
+
+enum InvoiceSource {
+  CLINIC
+  POS
+  HOTEL
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  QRIS
+  TRANSFER
+}
+
+enum HotelBookingStatus {
+  RESERVED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum ProductType {
+  MEDICINE
+  SUPPLEMENT
+  FOOD
+  ACCESSORY
+  SERVICE
+  OTHER
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ERROR
+  SUCCESS
+}
+
+enum NotificationChannel {
+  SYSTEM
+  EMAIL
+  WHATSAPP
+}
+
+model User {
+  id              String    @id @default(cuid())
+  username        String    @unique
+  pinHash         String
+  fullName        String
+  role            UserRole
+  email           String?   @unique
+  phone           String?
+  isActive        Boolean   @default(true)
+  isPortalEnabled Boolean   @default(false)
+  lastLoginAt     DateTime?
+  mustChangePin   Boolean   @default(false)
+  pinHistory      Json      @default("[]")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
+
+  createdCustomers Customer[]      @relation("CustomerCreatedByUser")
+  updatedCustomers Customer[]      @relation("CustomerUpdatedByUser")
+  portalCustomers  Customer[]      @relation("CustomerPortalUser")
+  createdPets      Pet[]           @relation("PetCreatedByUser")
+  updatedPets      Pet[]           @relation("PetUpdatedByUser")
+  appointments     Appointment[]
+  medicalRecords   MedicalRecord[]
+  createdInvoices  Invoice[]       @relation("InvoiceCreatedByUser")
+  updatedInvoices  Invoice[]       @relation("InvoiceUpdatedByUser")
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  bookings         HotelBooking[]
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model ClinicSetting {
+  id         String   @id @default(cuid())
+  clinicName String
+  address    String?
+  phone      String?
+  taxRate    Decimal  @default(0) @db.Decimal(5, 2)
+  currency   String   @default("IDR")
+  isOpen     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Customer {
+  id        String    @id @default(cuid())
+  userId    String?   @unique
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  isWalkIn  Boolean   @default(false)
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+
+  user           User?           @relation("CustomerPortalUser", fields: [userId], references: [id])
+  createdByUser  User?           @relation("CustomerCreatedByUser", fields: [createdBy], references: [id])
+  updatedByUser  User?           @relation("CustomerUpdatedByUser", fields: [updatedBy], references: [id])
+  pets           Pet[]
+  appointments   Appointment[]
+  invoices       Invoice[]
+  bookings       HotelBooking[]
+  medicalRecords MedicalRecord[]
+
+  @@index([name])
+  @@index([phone])
+  @@index([email])
+}
+
+model Species {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  breeds    Breed[]
+  pets      Pet[]
+}
+
+model Breed {
+  id         String    @id @default(cuid())
+  speciesId  String
+  name       String
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  species    Species   @relation(fields: [speciesId], references: [id])
+  pets       Pet[]
+
+  @@unique([speciesId, name])
+  @@index([speciesId])
+}
+
+model Color {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  pets      Pet[]
+}
+
+model Pet {
+  id               String    @id @default(cuid())
+  customerId       String
+  name             String
+  speciesId        String
+  breedId          String?
+  colorId          String?
+  gender           Gender    @default(UNKNOWN)
+  dateOfBirth      DateTime?
+  isSterile        Boolean   @default(false)
+  microchipNumber  String?   @unique
+  photoUrl         String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  createdBy        String?
+  updatedBy        String?
+
+  customer         Customer           @relation(fields: [customerId], references: [id])
+  species          Species            @relation(fields: [speciesId], references: [id])
+  breed            Breed?             @relation(fields: [breedId], references: [id])
+  color            Color?             @relation(fields: [colorId], references: [id])
+  createdByUser    User?              @relation("PetCreatedByUser", fields: [createdBy], references: [id])
+  updatedByUser    User?              @relation("PetUpdatedByUser", fields: [updatedBy], references: [id])
+  appointments     Appointment[]
+  vaccinations     VaccinationRecord[]
+  weightHistory    WeightHistory[]
+  allergies        Allergy[]
+  diseaseHistory   DiseaseHistory[]
+  attachments      Attachment[]
+
+  @@index([customerId])
+  @@index([speciesId])
+}
+
+model VaccinationRecord {
+  id            String    @id @default(cuid())
+  petId         String
+  vaccineName   String
+  date          DateTime
+  nextDueDate   DateTime?
+  batchNumber   String?
+  veterinarian  String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  createdBy     String?
+
+  pet           Pet       @relation(fields: [petId], references: [id])
+
+  @@index([petId])
+  @@index([date])
+}
+
+model WeightHistory {
+  id        String    @id @default(cuid())
+  petId     String
+  date      DateTime  @default(now())
+  weight    Decimal   @db.Decimal(5, 2)
+  notes     String?
+  createdAt DateTime  @default(now())
+  createdBy String?
+
+  pet       Pet       @relation(fields: [petId], references: [id])
+
+  @@index([petId])
+  @@index([date])
+}
+
+model Allergy {
+  id         String    @id @default(cuid())
+  petId      String
+  allergen   String
+  severity   String?
+  notes      String?
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  createdBy  String?
+
+  pet        Pet       @relation(fields: [petId], references: [id])
+
+  @@index([petId])
+}
+
+model DiseaseHistory {
+  id              String    @id @default(cuid())
+  petId           String
+  diseaseName    String
+  diagnosedDate   DateTime
+  resolvedDate    DateTime?
+  status          String    @default("ACTIVE")
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+
+  pet             Pet       @relation(fields: [petId], references: [id])
+
+  @@index([petId])
+}
+
+model Attachment {
+  id          String    @id @default(cuid())
+  entityType  String
+  entityId    String
+  fileName    String
+  fileUrl     String
+  mimeType    String
+  fileSize    Int
+  createdAt   DateTime  @default(now())
+  createdBy   String?
+  deletedAt   DateTime?
+
+  pet         Pet?      @relation(fields: [entityId], references: [id])
+
+  @@index([entityType, entityId])
+}
+
+model Appointment {
+  id              String            @id @default(cuid())
+  customerId      String
+  petId           String
+  doctorId        String?
+  appointmentDate DateTime
+  status          AppointmentStatus @default(SCHEDULED)
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
+
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  pet           Pet            @relation(fields: [petId], references: [id])
+  doctor        User?          @relation(fields: [doctorId], references: [id])
+  medicalRecord MedicalRecord?
+
+  @@index([customerId])
+  @@index([appointmentDate])
+  @@index([status])
+}
+
+model MedicalRecord {
+  id            String    @id @default(cuid())
+  appointmentId String    @unique
+  customerId    String
+  doctorId      String?
+  diagnosis     String?
+  notes         String?
+  status        String    @default("OPEN")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  createdBy     String?
+  updatedBy     String?
+
+  appointment   Appointment         @relation(fields: [appointmentId], references: [id])
+  customer      Customer            @relation(fields: [customerId], references: [id])
+  doctor        User?               @relation(fields: [doctorId], references: [id])
+  items         MedicalRecordItem[]
+  prescriptions Prescription[]
+
+  @@index([customerId])
+}
+
+model MedicalRecordItem {
+  id              String          @id @default(cuid())
+  medicalRecordId String
+  type            MedicalItemType
+  name            String
+  qty             Int
+  price           Decimal         @db.Decimal(10, 2)
+  total           Decimal         @db.Decimal(10, 2)
+  productId       String?
+  referenceId     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  invoiceItems  InvoiceItem[]
+
+  @@index([medicalRecordId])
+}
+
+model Prescription {
+  id              String             @id @default(cuid())
+  medicalRecordId String
+  status          PrescriptionStatus @default(PRESCRIBED)
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+
+  @@index([medicalRecordId])
+}
+
+model Product {
+  id            String      @id @default(cuid())
+  sku           String      @unique
+  name          String
+  type          ProductType @default(OTHER)
+  unit          String      @default("pcs")
+  currentQty    Int         @default(0)
+  reorderLevel  Int         @default(0)
+  basePrice     Decimal     @db.Decimal(10, 2)
+  costPrice     Decimal     @db.Decimal(10, 2)
+  requiresBatch Boolean     @default(false)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+  createdBy     String?
+  updatedBy     String?
+
+  batches            InventoryBatch[]
+  stockMovements     StockMovement[]
+  invoiceItems       InvoiceItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@index([name])
+  @@index([type])
+}
+
+model InventoryBatch {
+  id         String    @id @default(cuid())
+  productId  String
+  batchNo    String
+  expiryDate DateTime?
+  quantity   Int       @default(0)
+  currentQty Int       @default(0)
+  costPrice  Decimal   @db.Decimal(10, 2)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  product        Product         @relation(fields: [productId], references: [id])
+  stockMovements StockMovement[]
+
+  @@index([productId])
+  @@index([expiryDate])
+}
+
+model PurchaseOrder {
+  id           String    @id @default(cuid())
+  poNumber     String    @unique
+  supplierName String
+  status       String    @default("DRAFT")
+  orderDate    DateTime  @default(now())
+  expectedDate DateTime?
+  total        Decimal   @db.Decimal(10, 2)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  items PurchaseOrderItem[]
+
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id              String   @id @default(cuid())
+  purchaseOrderId String
+  productId       String
+  qty             Int
+  unitPrice       Decimal  @db.Decimal(10, 2)
+  total           Decimal  @db.Decimal(10, 2)
+  createdAt       DateTime @default(now())
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@index([purchaseOrderId])
+}
+
+model StockMovement {
+  id           String            @id @default(cuid())
+  productId    String
+  batchId      String?
+  type         StockMovementType
+  refType      StockMovementRef
+  refId        String
+  qty          Int
+  balanceAfter Int
+  notes        String?
+  createdAt    DateTime          @default(now())
+  createdBy    String?
+
+  product Product         @relation(fields: [productId], references: [id])
+  batch   InventoryBatch? @relation(fields: [batchId], references: [id])
+
+  @@index([productId])
+  @@index([refType])
+  @@index([createdAt])
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  invoiceNo  String        @unique
+  customerId String
+  status     InvoiceStatus @default(PENDING)
+  source     InvoiceSource @default(CLINIC)
+  subtotal   Decimal       @db.Decimal(10, 2)
+  tax        Decimal       @db.Decimal(10, 2)
+  discount   Decimal       @db.Decimal(10, 2)
+  total      Decimal       @db.Decimal(10, 2)
+  paidAmount Decimal       @default(0) @db.Decimal(10, 2)
+  notes      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+  createdBy  String?
+  updatedBy  String?
+
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  createdByUser User?         @relation("InvoiceCreatedByUser", fields: [createdBy], references: [id])
+  updatedByUser User?         @relation("InvoiceUpdatedByUser", fields: [updatedBy], references: [id])
+  items         InvoiceItem[]
+  payments      Payment[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model InvoiceItem {
+  id                  String   @id @default(cuid())
+  invoiceId           String
+  medicalRecordItemId String?
+  productId           String?
+  description         String
+  qty                 Int
+  unitPrice           Decimal  @db.Decimal(10, 2)
+  total               Decimal  @db.Decimal(10, 2)
+  createdAt           DateTime @default(now())
+
+  invoice           Invoice            @relation(fields: [invoiceId], references: [id])
+  medicalRecordItem MedicalRecordItem? @relation(fields: [medicalRecordItemId], references: [id])
+  product           Product?           @relation(fields: [productId], references: [id])
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  invoiceId   String
+  method      PaymentMethod @default(CASH)
+  amount      Decimal       @db.Decimal(10, 2)
+  referenceNo String?
+  status      String        @default("SUCCESS")
+  createdAt   DateTime      @default(now())
+  createdBy   String?
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+}
+
+model HotelRoom {
+  id           String    @id @default(cuid())
+  roomNo       String    @unique
+  name         String
+  type         String
+  ratePerNight Decimal   @db.Decimal(10, 2)
+  capacity     Int       @default(1)
+  status       String    @default("AVAILABLE")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  bookings HotelBooking[]
+}
+
+model HotelBooking {
+  id           String             @id @default(cuid())
+  customerId   String
+  roomId       String
+  checkInDate  DateTime
+  checkOutDate DateTime
+  status       HotelBookingStatus @default(RESERVED)
+  totalAmount  Decimal            @db.Decimal(10, 2)
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  deletedAt    DateTime?
+  createdBy    String?
+  updatedBy    String?
+
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  room          HotelRoom @relation(fields: [roomId], references: [id])
+  createdByUser User?     @relation(fields: [createdBy], references: [id])
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String
+  changes   Json
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entity])
+  @@index([entityId])
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType    @default(INFO)
+  channel   NotificationChannel @default(SYSTEM)
+  isRead    Boolean             @default(false)
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}

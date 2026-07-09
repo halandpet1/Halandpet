@@ -1,0 +1,27 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { verifyPin } from '@/lib/auth';
+import { setSessionCookie } from '@/lib/session';
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  const username = typeof body?.username === 'string' ? body.username : '';
+  const pin = typeof body?.pin === 'string' ? body.pin : '';
+
+  if (!db) {
+    return NextResponse.json({ success: false, error: 'Database belum dikonfigurasi' }, { status: 500 });
+  }
+
+  const user = await db.user.findFirst({ where: { username, deletedAt: null } });
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Username atau PIN tidak valid' }, { status: 401 });
+  }
+
+  const isValid = await verifyPin(pin, user.pinHash);
+  if (!isValid) {
+    return NextResponse.json({ success: false, error: 'Username atau PIN tidak valid' }, { status: 401 });
+  }
+
+  await setSessionCookie({ id: user.id, role: user.role, fullName: user.fullName });
+  return NextResponse.json({ success: true });
+}
