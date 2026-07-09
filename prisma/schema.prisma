@@ -275,6 +275,7 @@ model VaccinationRecord {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
   createdBy     String?
+  updatedBy     String?
 
   pet           Pet       @relation(fields: [petId], references: [id])
 
@@ -289,7 +290,10 @@ model WeightHistory {
   weight    Decimal   @db.Decimal(5, 2)
   notes     String?
   createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
   createdBy String?
+  updatedBy String?
 
   pet       Pet       @relation(fields: [petId], references: [id])
 
@@ -304,8 +308,10 @@ model Allergy {
   severity   String?
   notes      String?
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
   createdBy  String?
+  updatedBy  String?
 
   pet        Pet       @relation(fields: [petId], references: [id])
 
@@ -324,6 +330,7 @@ model DiseaseHistory {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
   createdBy       String?
+  updatedBy       String?
 
   pet             Pet       @relation(fields: [petId], references: [id])
 
@@ -339,7 +346,9 @@ model Attachment {
   mimeType    String
   fileSize    Int
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   createdBy   String?
+  updatedBy   String?
   deletedAt   DateTime?
 
   pet         Pet?      @relation(fields: [entityId], references: [id])

@@ -27,6 +27,7 @@ export function CustomersPageClient() {
   const [notes, setNotes] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -50,6 +51,7 @@ export function CustomersPageClient() {
     event.preventDefault();
     setMessage(null);
     setError(null);
+    setFieldErrors({});
     const result = await createCustomer({ name, phone, email, address, notes, isWalkIn: false });
     if (result.success) {
       setMessage('Customer berhasil dibuat');
@@ -62,6 +64,7 @@ export function CustomersPageClient() {
       return;
     }
     setError(result.error);
+    setFieldErrors(result.fieldErrors ?? {});
   }
 
   async function handleDelete(id: string) {
@@ -81,28 +84,33 @@ export function CustomersPageClient() {
       </div>
 
       <form onSubmit={handleCreate} className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900 p-6 md:grid-cols-2">
-        <label className="block text-sm">
+        <label className="block text-sm" htmlFor="customer-name">
           <span className="mb-2 block">Nama</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <input id="customer-name" name="name" value={name} onChange={(event) => setName(event.target.value)} aria-invalid={Boolean(fieldErrors.name?.length)} aria-describedby={fieldErrors.name?.length ? 'customer-name-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          {fieldErrors.name ? <span id="customer-name-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.name[0]}</span> : null}
         </label>
-        <label className="block text-sm">
+        <label className="block text-sm" htmlFor="customer-phone">
           <span className="mb-2 block">Telepon</span>
-          <input value={phone} onChange={(event) => setPhone(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <input id="customer-phone" name="phone" value={phone} onChange={(event) => setPhone(event.target.value)} aria-invalid={Boolean(fieldErrors.phone?.length)} aria-describedby={fieldErrors.phone?.length ? 'customer-phone-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          {fieldErrors.phone ? <span id="customer-phone-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.phone[0]}</span> : null}
         </label>
-        <label className="block text-sm">
+        <label className="block text-sm" htmlFor="customer-email">
           <span className="mb-2 block">Email</span>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <input id="customer-email" name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} aria-invalid={Boolean(fieldErrors.email?.length)} aria-describedby={fieldErrors.email?.length ? 'customer-email-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          {fieldErrors.email ? <span id="customer-email-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.email[0]}</span> : null}
         </label>
-        <label className="block text-sm">
+        <label className="block text-sm" htmlFor="customer-address">
           <span className="mb-2 block">Alamat</span>
-          <input value={address} onChange={(event) => setAddress(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <input id="customer-address" name="address" value={address} onChange={(event) => setAddress(event.target.value)} aria-invalid={Boolean(fieldErrors.address?.length)} aria-describedby={fieldErrors.address?.length ? 'customer-address-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          {fieldErrors.address ? <span id="customer-address-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.address[0]}</span> : null}
         </label>
-        <label className="block text-sm md:col-span-2">
+        <label className="block text-sm md:col-span-2" htmlFor="customer-notes">
           <span className="mb-2 block">Catatan</span>
-          <textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <textarea id="customer-notes" name="notes" value={notes} onChange={(event) => setNotes(event.target.value)} aria-invalid={Boolean(fieldErrors.notes?.length)} aria-describedby={fieldErrors.notes?.length ? 'customer-notes-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          {fieldErrors.notes ? <span id="customer-notes-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.notes[0]}</span> : null}
         </label>
         <div className="md:col-span-2">
-          <button className="rounded-lg bg-blue-600 px-4 py-2">Tambah customer</button>
+          <button type="submit" className="rounded-lg bg-blue-600 px-4 py-2">Tambah customer</button>
           {message ? <span className="ml-4 text-sm text-emerald-400">{message}</span> : null}
           {error ? <span className="ml-4 text-sm text-rose-400">{error}</span> : null}
         </div>
@@ -147,8 +155,8 @@ export function CustomersPageClient() {
         <div className="mt-4 flex items-center justify-between">
           <span className="text-sm text-slate-400">Total: {total}</span>
           <div className="flex gap-2">
-            <button disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Sebelumnya</button>
-            <button disabled={page * pageSize >= total} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Berikutnya</button>
+            <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Sebelumnya</button>
+            <button type="button" disabled={page * pageSize >= total} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Berikutnya</button>
           </div>
         </div>
       </div>

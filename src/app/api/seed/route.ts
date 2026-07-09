@@ -43,5 +43,13 @@ export async function POST() {
     },
   });
 
-  return NextResponse.json({ ok: true, owner });
+  return NextResponse.json({
+    ok: true,
+    owner: {
+      id: owner.id,
+      username: owner.username,
+      fullName: owner.fullName,
+      role: owner.role,
+    },
+  });
 }

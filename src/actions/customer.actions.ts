@@ -163,19 +163,25 @@ export async function listCustomers(params?: { search?: string; page?: number; p
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
   const search = params?.search?.trim();
+  const customerScope = actor.role === 'CUSTOMER'
+    ? await db.customer.findFirst({ where: { userId: actor.id, deletedAt: null }, select: { id: true } })
+    : null;
   const page = params?.page ?? 1;
   const pageSize = params?.pageSize ?? 10;
 
-  const where = search
-    ? {
-        deletedAt: null,
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { phone: { contains: search, mode: 'insensitive' as const } },
-          { email: { contains: search, mode: 'insensitive' as const } },
-        ],
-      }
-    : { deletedAt: null };
+  const where = {
+    deletedAt: null,
+    ...(customerScope ? { id: customerScope.id } : {}),
+    ...(search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { phone: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}),
+  };
 
   const [items, total] = await Promise.all([
     db.customer.findMany({
@@ -197,8 +203,16 @@ export async function getCustomerById(id: string) {
   const actor = await assertRole(staffViewRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
+  const customerScope = actor.role === 'CUSTOMER'
+    ? await db.customer.findFirst({ where: { userId: actor.id, deletedAt: null }, select: { id: true } })
+    : null;
+
   const customer = await db.customer.findFirst({
-    where: { id, deletedAt: null },
+    where: {
+      id,
+      deletedAt: null,
+      ...(customerScope ? { id: customerScope.id } : {}),
+    },
     select: { id: true, name: true, phone: true, email: true, address: true, notes: true, isWalkIn: true, createdAt: true, updatedAt: true },
   });
   return customer ? { success: true, data: customer } : { success: false, error: 'Customer tidak ditemukan' };
@@ -345,9 +359,13 @@ export async function listPets(params?: { customerId?: string; search?: string; 
   const search = params?.search?.trim();
   const page = params?.page ?? 1;
   const pageSize = params?.pageSize ?? 10;
+  const customerScope = actor.role === 'CUSTOMER'
+    ? await db.customer.findFirst({ where: { userId: actor.id, deletedAt: null }, select: { id: true } })
+    : null;
   const where = {
     deletedAt: null,
-    ...(params?.customerId ? { customerId: params.customerId } : {}),
+    ...(customerScope ? { customerId: customerScope.id } : {}),
+    ...(actor.role !== 'CUSTOMER' && params?.customerId ? { customerId: params.customerId } : {}),
     ...(search
       ? {
           OR: [
@@ -396,8 +414,16 @@ export async function getPetById(id: string) {
   const actor = await assertRole(staffViewRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
+  const customerScope = actor.role === 'CUSTOMER'
+    ? await db.customer.findFirst({ where: { userId: actor.id, deletedAt: null }, select: { id: true } })
+    : null;
+
   const pet = await db.pet.findFirst({
-    where: { id, deletedAt: null },
+    where: {
+      id,
+      deletedAt: null,
+      ...(customerScope ? { customerId: customerScope.id } : {}),
+    },
     select: {
       id: true,
       name: true,

@@ -53,8 +53,12 @@ function safeEqual(a: string, b: string) {
   return result === 0;
 }
 
+function getSessionExpiry() {
+  return Math.floor(Date.now() / 1000) + 60 * 60 * 8;
+}
+
 export async function encodeSession(session: SessionUser) {
-  const payload = encodeBase64Url(JSON.stringify(session));
+  const payload = encodeBase64Url(JSON.stringify({ ...session, exp: getSessionExpiry() }));
   return `${payload}.${await sign(payload)}`;
 }
 
@@ -75,11 +79,11 @@ export async function decodeSession(token?: string | null): Promise<SessionUser 
 
   try {
     const decoded = decodeBase64Url(payload);
-    const parsed = JSON.parse(decoded) as SessionUser;
-    if (!parsed.id || !parsed.role || !parsed.fullName) {
+    const parsed = JSON.parse(decoded) as SessionUser & { exp?: number };
+    if (!parsed.id || !parsed.role || !parsed.fullName || typeof parsed.exp !== 'number' || parsed.exp <= Math.floor(Date.now() / 1000)) {
       return null;
     }
-    return parsed;
+    return { id: parsed.id, role: parsed.role, fullName: parsed.fullName };
   } catch {
     return null;
   }

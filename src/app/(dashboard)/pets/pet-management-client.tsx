@@ -29,6 +29,7 @@ export function PetManagementClient() {
   const [speciesId, setSpeciesId] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -51,6 +52,7 @@ export function PetManagementClient() {
     event.preventDefault();
     setMessage(null);
     setError(null);
+    setFieldErrors({});
     const result = await createPet({ customerId, name, speciesId, gender: 'UNKNOWN' });
     if (result.success) {
       setMessage('Hewan berhasil dibuat');
@@ -61,6 +63,7 @@ export function PetManagementClient() {
       return;
     }
     setError(result.error);
+    setFieldErrors(result.fieldErrors ?? {});
   }
 
   async function handleDelete(id: string) {
@@ -78,25 +81,28 @@ export function PetManagementClient() {
       </div>
 
       <form onSubmit={handleCreate} className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900 p-6 md:grid-cols-2">
-        <label className="block text-sm">
+        <label className="block text-sm" htmlFor="pet-customer-id">
           <span className="mb-2 block">Customer ID</span>
-          <input value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <input id="pet-customer-id" name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)} aria-invalid={Boolean(fieldErrors.customerId?.length)} aria-describedby={fieldErrors.customerId?.length ? 'pet-customer-id-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          {fieldErrors.customerId ? <span id="pet-customer-id-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.customerId[0]}</span> : null}
         </label>
-        <label className="block text-sm">
+        <label className="block text-sm" htmlFor="pet-name">
           <span className="mb-2 block">Nama hewan</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <input id="pet-name" name="name" value={name} onChange={(event) => setName(event.target.value)} aria-invalid={Boolean(fieldErrors.name?.length)} aria-describedby={fieldErrors.name?.length ? 'pet-name-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          {fieldErrors.name ? <span id="pet-name-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.name[0]}</span> : null}
         </label>
-        <label className="block text-sm">
+        <label className="block text-sm" htmlFor="pet-species">
           <span className="mb-2 block">Spesies</span>
-          <select value={speciesId} onChange={(event) => setSpeciesId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+          <select id="pet-species" name="speciesId" value={speciesId} onChange={(event) => setSpeciesId(event.target.value)} aria-invalid={Boolean(fieldErrors.speciesId?.length)} aria-describedby={fieldErrors.speciesId?.length ? 'pet-species-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
             <option value="">Pilih spesies</option>
             {species.map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </select>
+          {fieldErrors.speciesId ? <span id="pet-species-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.speciesId[0]}</span> : null}
         </label>
         <div className="md:col-span-2">
-          <button className="rounded-lg bg-blue-600 px-4 py-2">Tambah hewan</button>
+          <button type="submit" className="rounded-lg bg-blue-600 px-4 py-2">Tambah hewan</button>
           {message ? <span className="ml-4 text-sm text-emerald-400">{message}</span> : null}
           {error ? <span className="ml-4 text-sm text-rose-400">{error}</span> : null}
         </div>
@@ -141,8 +147,8 @@ export function PetManagementClient() {
         <div className="mt-4 flex items-center justify-between">
           <span className="text-sm text-slate-400">Total: {total}</span>
           <div className="flex gap-2">
-            <button disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Sebelumnya</button>
-            <button disabled={page * pageSize >= total} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Berikutnya</button>
+            <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Sebelumnya</button>
+            <button type="button" disabled={page * pageSize >= total} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-white/10 px-3 py-1 disabled:opacity-40">Berikutnya</button>
           </div>
         </div>
       </div>
