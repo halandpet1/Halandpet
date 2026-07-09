@@ -1,5 +1,16 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Module 4 Status
+
+Module 4 inventory, pharmacy, and procurement has been extended with production-oriented server actions for:
+
+- master product creation with SKU, barcode, category, brand, min/max stock, pricing, and batch requirements
+- supplier and warehouse creation with contact and location data
+- purchase request, purchase order, goods receipt, and supplier invoice/payment workflows with audit logging and RBAC checks
+- warehouse transfer, stock return, disposal, and stock adjustment flows with immutable stock movement history
+- inventory alerting and dashboard summary support for low stock, near-expired, expired, and stock-value monitoring
+- reporting widgets on the inventory dashboard that surface recent purchase orders, supplier payments, and expiry batches for operations review
+
 ## Getting Started
 
 First, run the development server:

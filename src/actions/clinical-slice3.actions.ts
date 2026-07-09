@@ -136,6 +136,24 @@ export async function createTreatmentPlan(rawData: unknown): Promise<ActionResul
   return { success: true, data: { id: result.id } };
 }
 
+export async function updatePrescriptionQueueStatus(id: string, queueStatus: string): Promise<ActionResult<{ id: string }>> {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(doctorRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const existing = await db.prescription.findFirst({ where: { id, deletedAt: null }, select: { id: true, status: true } });
+  if (!existing) return { success: false, error: 'Resep tidak ditemukan' };
+
+  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const updated = await tx.prescription.update({ where: { id }, data: { queueStatus, queueUpdatedAt: new Date(), updatedBy: actor.id } });
+    await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'Prescription', entityId: updated.id, changes: { queueStatus } as Prisma.InputJsonValue } });
+    return updated;
+  });
+
+  await revalidateCustomerViews();
+  return { success: true, data: { id: result.id } };
+}
+
 export async function createPrescription(rawData: unknown): Promise<ActionResult<{ id: string }>> {
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(doctorRoles);
@@ -180,6 +198,7 @@ export async function createPrescription(rawData: unknown): Promise<ActionResult
         refill: parsed.data.refill,
         warnings: parsed.data.warnings?.trim() || null,
         status: parsed.data.status,
+        queueStatus: 'WAITING',
         createdBy: actor.id,
         updatedBy: actor.id,
       },
