@@ -1,0 +1,10 @@
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+
+export async function GET() {
+  if (!db) {
+    return NextResponse.json({ status: 'degraded', reason: 'database-unavailable' }, { status: 503 });
+  }
+
+  return NextResponse.json({ status: 'ready' });
+}

@@ -208,7 +208,6 @@ export async function createMedicalRecord(rawData: unknown): Promise<ActionResul
         appointmentId: appointment.id,
         customerId: appointment.customerId,
         doctorId: actor.id,
-        diagnosis: parsed.data.diagnosis?.trim() || null,
         notes: parsed.data.notes?.trim() || null,
         status: parsed.data.status?.trim() || 'OPEN',
         createdBy: actor.id,
@@ -216,7 +215,7 @@ export async function createMedicalRecord(rawData: unknown): Promise<ActionResul
       },
     });
 
-    await tx.appointment.update({ where: { id: appointment.id }, data: { status: 'COMPLETED', updatedBy: actor.id } });
+    await tx.appointment.update({ where: { id: appointment.id }, data: { status: 'CONSULTING', updatedBy: actor.id } });
 
     await tx.auditLog.create({
       data: {
@@ -245,7 +244,6 @@ export async function getMedicalRecordByAppointmentId(appointmentId: string) {
     where: { appointmentId, deletedAt: null },
     select: {
       id: true,
-      diagnosis: true,
       notes: true,
       status: true,
       createdAt: true,

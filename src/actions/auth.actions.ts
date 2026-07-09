@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { hashPin, verifyPin } from '@/lib/auth';
+import { setSessionCookie } from '@/lib/session';
 import { usernameSchema, pinSchema } from '@/validators/common.schema';
 import { z } from 'zod';
 
@@ -41,6 +42,7 @@ export async function loginAction(rawData: FormData | Record<string, unknown>) {
     data: { lastLoginAt: new Date(), mustChangePin: false },
   });
 
+  await setSessionCookie({ id: user.id, role: user.role, fullName: user.fullName });
   redirect('/dashboard');
 }
 

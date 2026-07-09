@@ -144,13 +144,26 @@ export async function createQueue(rawData: unknown): Promise<ActionResult<{ id: 
   const existing = await db.queue.findFirst({ where: { appointmentId: parsed.data.appointmentId, deletedAt: null }, select: { id: true } });
   if (existing) return { success: false, error: 'Antrian sudah ada untuk appointment ini' };
 
+  const appointment = await db.appointment.findFirst({ where: { id: parsed.data.appointmentId, deletedAt: null }, select: { id: true, doctorId: true, appointmentDate: true, status: true } });
+  if (!appointment) return { success: false, error: 'Janji temu tidak ditemukan' };
+  if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(appointment.status)) {
+    return { success: false, error: 'Appointment sudah tidak aktif untuk antrian' };
+  }
+
+  const appointmentDay = appointment.appointmentDate.toISOString().slice(0, 10);
+  const queueDay = queueDate.toISOString().slice(0, 10);
+  if (appointmentDay !== queueDay) {
+    return { success: false, error: 'Tanggal antrian harus sesuai dengan tanggal appointment' };
+  }
+
   const nextQueueNo = await db.queue.count({ where: { queueDate, deletedAt: null } }) + 1;
+  const targetDoctorId = parsed.data.doctorId?.trim() || appointment.doctorId || null;
 
   const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
     const created = await tx.queue.create({
       data: {
         appointmentId: parsed.data.appointmentId,
-        doctorId: parsed.data.doctorId || null,
+        doctorId: targetDoctorId,
         queueDate,
         queueNo: parsed.data.queueNo || nextQueueNo,
         status: parsed.data.status ?? 'WAITING',
@@ -161,6 +174,7 @@ export async function createQueue(rawData: unknown): Promise<ActionResult<{ id: 
       },
     });
 
+    await tx.appointment.update({ where: { id: appointment.id }, data: { status: 'WAITING', updatedBy: actor.id } });
     await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Queue', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
     return created;
   });
@@ -174,11 +188,18 @@ export async function updateQueueStatus(id: string, status: string): Promise<Act
   const actor = await assertRole(queueRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const existing = await db.queue.findFirst({ where: { id, deletedAt: null }, select: { id: true } });
+  const existing = await db.queue.findFirst({ where: { id, deletedAt: null }, select: { id: true, appointmentId: true } });
   if (!existing) return { success: false, error: 'Antrian tidak ditemukan' };
 
   const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
     const updated = await tx.queue.update({ where: { id }, data: { status: status as 'WAITING' | 'CALLED' | 'SKIPPED' | 'COMPLETED' | 'CANCELLED', updatedBy: actor.id } });
+
+    if (status === 'CALLED') {
+      await tx.appointment.update({ where: { id: existing.appointmentId }, data: { status: 'CONSULTING', updatedBy: actor.id } });
+    } else if (status === 'COMPLETED') {
+      await tx.appointment.update({ where: { id: existing.appointmentId }, data: { status: 'COMPLETED', updatedBy: actor.id } });
+    }
+
     await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'Queue', entityId: updated.id, changes: { status } as Prisma.InputJsonValue } });
     return updated;
   });
@@ -211,6 +232,9 @@ export async function createSoapNote(rawData: unknown): Promise<ActionResult<{ i
   const parsed = await parseOrFail(soapSchema, rawData);
   if (!parsed.success) return parsed;
 
+  const medicalRecord = await db.medicalRecord.findFirst({ where: { id: parsed.data.medicalRecordId, deletedAt: null }, select: { id: true, appointmentId: true } });
+  if (!medicalRecord) return { success: false, error: 'Rekam medis tidak ditemukan' };
+
   const existing = await db.soapNote.findFirst({ where: { medicalRecordId: parsed.data.medicalRecordId, deletedAt: null }, select: { id: true } });
   if (existing) return { success: false, error: 'SOAP note sudah ada untuk rekam medis ini' };
 
@@ -230,6 +254,7 @@ export async function createSoapNote(rawData: unknown): Promise<ActionResult<{ i
       },
     });
 
+    await tx.appointment.update({ where: { id: medicalRecord.appointmentId }, data: { status: 'CONSULTING', updatedBy: actor.id } });
     await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'SoapNote', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
     return created;
   });
@@ -311,15 +336,71 @@ export async function getClinicalTimeline(medicalRecordId: string) {
   const actor = await assertRole(staffViewRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const medicalRecord = await db.medicalRecord.findFirst({ where: { id: medicalRecordId, deletedAt: null }, select: { id: true } });
+  const medicalRecord = await db.medicalRecord.findFirst({
+    where: { id: medicalRecordId, deletedAt: null },
+    select: {
+      id: true,
+      notes: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      appointmentId: true,
+    },
+  });
   if (!medicalRecord) return { success: false, error: 'Rekam medis tidak ditemukan' };
 
-  const [soapNote, vitalSigns, appointments, attachments] = await Promise.all([
+  const appointmentResult = await db.appointment.findFirst({ where: { id: medicalRecord.appointmentId, deletedAt: null }, select: { id: true, appointmentDate: true, status: true, customer: { select: { id: true, name: true } }, pet: { select: { id: true, name: true } } } });
+  if (!appointmentResult) return { success: false, error: 'Janji temu tidak ditemukan' };
+
+  const [diagnosis, soapNote, vitalSigns, attachments, prescriptions, vaccinations, weights, allergies, diseases] = await Promise.all([
+    db.diagnosis.findFirst({ where: { medicalRecordId, deletedAt: null }, select: { id: true, primaryDiagnosis: true, clinicalNotes: true } }),
     db.soapNote.findFirst({ where: { medicalRecordId, deletedAt: null }, select: { id: true, createdAt: true, updatedAt: true, subjective: true, objective: true, assessment: true, plan: true } }),
     db.vitalSignRecord.findMany({ where: { medicalRecordId, deletedAt: null }, orderBy: { recordedAt: 'asc' } }),
-    db.appointment.findMany({ where: { pet: { appointments: { some: {} } } }, take: 5 }),
     db.attachment.findMany({ where: { entityType: 'MR', entityId: medicalRecordId, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
+    db.prescription.findMany({ where: { medicalRecordId, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
+    db.vaccinationRecord.findMany({ where: { petId: appointmentResult.pet.id, deletedAt: null }, orderBy: { date: 'desc' } }),
+    db.weightHistory.findMany({ where: { petId: appointmentResult.pet.id, deletedAt: null }, orderBy: { date: 'desc' } }),
+    db.allergy.findMany({ where: { petId: appointmentResult.pet.id, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
+    db.diseaseHistory.findMany({ where: { petId: appointmentResult.pet.id, deletedAt: null }, orderBy: { diagnosedDate: 'desc' } }),
   ]);
 
-  return { success: true, data: { soapNote, vitalSigns, appointments, attachments } };
+  const timelineItems = [
+    {
+      id: appointmentResult.id,
+      kind: 'appointment',
+      title: `Appointment • ${appointmentResult.customer.name}`,
+      date: appointmentResult.appointmentDate,
+      detail: `Pasien: ${appointmentResult.pet.name} • Status: ${appointmentResult.status}`,
+    },
+    ...(soapNote ? [{ id: soapNote.id, kind: 'soap', title: 'SOAP', date: soapNote.createdAt, detail: soapNote.assessment || soapNote.plan || 'SOAP note tersedia' }] : []),
+    ...vitalSigns.map((item) => ({ id: item.id, kind: 'vitals', title: 'Vital Signs', date: item.recordedAt, detail: `Suhu: ${item.temperature ?? '-'} • Berat: ${item.weight ?? '-'}` })),
+    {
+      id: `${medicalRecord.id}-diagnosis`,
+      kind: 'diagnosis',
+      title: 'Diagnosis placeholder',
+      date: medicalRecord.createdAt,
+      detail: diagnosis?.primaryDiagnosis || diagnosis?.clinicalNotes || 'Belum ada diagnosis',
+    },
+    {
+      id: `${medicalRecord.id}-treatment`,
+      kind: 'treatment',
+      title: 'Treatment placeholder',
+      date: medicalRecord.updatedAt,
+      detail: medicalRecord.notes || 'Belum ada tindakan',
+    },
+    {
+      id: `${medicalRecord.id}-prescription`,
+      kind: 'prescription',
+      title: 'Prescription placeholder',
+      date: medicalRecord.updatedAt,
+      detail: prescriptions.length ? `${prescriptions.length} resep tercatat` : 'Belum ada resep',
+    },
+    ...attachments.map((item) => ({ id: item.id, kind: 'attachment', title: 'Attachment', date: item.createdAt, detail: item.fileName })),
+    ...vaccinations.map((item) => ({ id: item.id, kind: 'vaccination', title: item.vaccineName, date: item.date, detail: item.notes || 'Vaksinasi' })),
+    ...weights.map((item) => ({ id: item.id, kind: 'weight', title: `${item.weight} kg`, date: item.date, detail: item.notes || 'Berat badan' })),
+    ...diseases.map((item) => ({ id: item.id, kind: 'disease', title: item.diseaseName, date: item.diagnosedDate, detail: item.notes || item.status || 'Riwayat penyakit' })),
+    ...allergies.map((item) => ({ id: item.id, kind: 'allergy', title: item.allergen, date: item.createdAt, detail: item.notes || item.severity || 'Alergi' })),
+  ].sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+
+  return { success: true, data: { soapNote, vitalSigns, appointments: [appointmentResult], attachments, timelineItems, prescriptions, vaccinations, weights, allergies, diseases } };
 }

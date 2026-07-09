@@ -149,6 +149,10 @@ model User {
   soapNotes        SoapNote[]
   vitalSigns       VitalSignRecord[]
   medicalRecords   MedicalRecord[]
+  diagnoses        Diagnosis[]
+  treatmentPlans   TreatmentPlan[]
+  prescriptions    Prescription[]
+  followUps        FollowUp[]
   createdInvoices  Invoice[]       @relation("InvoiceCreatedByUser")
   updatedInvoices  Invoice[]       @relation("InvoiceUpdatedByUser")
   auditLogs        AuditLog[]
@@ -449,7 +453,6 @@ model MedicalRecord {
   appointmentId String    @unique
   customerId    String
   doctorId      String?
-  diagnosis     String?
   notes         String?
   status        String    @default("OPEN")
   createdAt     DateTime  @default(now())
@@ -462,11 +465,112 @@ model MedicalRecord {
   customer      Customer            @relation(fields: [customerId], references: [id])
   doctor        User?               @relation(fields: [doctorId], references: [id])
   items         MedicalRecordItem[]
+  clinicalDiagnosis Diagnosis?
+  treatmentPlan TreatmentPlan?
   prescriptions Prescription[]
+  followUps     FollowUp[]
   soapNote      SoapNote?
   vitalSigns    VitalSignRecord[]
 
   @@index([customerId])
+}
+
+model Diagnosis {
+  id                    String    @id @default(cuid())
+  medicalRecordId       String    @unique
+  doctorId              String?
+  primaryDiagnosis      String?
+  secondaryDiagnosis    String?
+  differentialDiagnosis String?
+  clinicalNotes         String?
+  isLocked              Boolean   @default(false)
+  lockedAt              DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+  createdBy             String?
+  updatedBy             String?
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  doctor        User?         @relation(fields: [doctorId], references: [id])
+  prescriptions Prescription[]
+
+  @@index([medicalRecordId])
+}
+
+model TreatmentPlan {
+  id                          String    @id @default(cuid())
+  medicalRecordId             String    @unique
+  doctorId                    String?
+  medicalTreatment            String?
+  procedure                   String?
+  observation                 String?
+  hospitalizationRecommendation String?
+  followUpRecommendation      String?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+  deletedAt                   DateTime?
+  createdBy                   String?
+  updatedBy                   String?
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  doctor        User?         @relation(fields: [doctorId], references: [id])
+
+  @@index([medicalRecordId])
+}
+
+model Prescription {
+  id              String             @id @default(cuid())
+  medicalRecordId String
+  diagnosisId     String?
+  doctorId        String?
+  productId       String?
+  inventoryBatchId String?
+  medicine        String
+  dosage          String?
+  frequency       String?
+  duration        String?
+  instructions    String?
+  quantity        Int                @default(1)
+  refill          Int                @default(0)
+  warnings        String?
+  status          PrescriptionStatus @default(PRESCRIBED)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
+
+  medicalRecord  MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  diagnosis      Diagnosis?    @relation(fields: [diagnosisId], references: [id])
+  doctor         User?         @relation(fields: [doctorId], references: [id])
+  product        Product?      @relation(fields: [productId], references: [id])
+  inventoryBatch InventoryBatch? @relation(fields: [inventoryBatchId], references: [id])
+
+  @@index([medicalRecordId])
+  @@index([diagnosisId])
+  @@index([status])
+}
+
+model FollowUp {
+  id               String    @id @default(cuid())
+  medicalRecordId  String
+  doctorId         String?
+  nextVisitDate    DateTime?
+  reminder         String?
+  reason           String?
+  status           String    @default("SCHEDULED")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  createdBy        String?
+  updatedBy        String?
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  doctor        User?         @relation(fields: [doctorId], references: [id])
+
+  @@index([medicalRecordId])
+  @@index([status])
 }
 
 model SoapNote {
@@ -535,22 +639,6 @@ model MedicalRecordItem {
   @@index([medicalRecordId])
 }
 
-model Prescription {
-  id              String             @id @default(cuid())
-  medicalRecordId String
-  status          PrescriptionStatus @default(PRESCRIBED)
-  notes           String?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  deletedAt       DateTime?
-  createdBy       String?
-  updatedBy       String?
-
-  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
-
-  @@index([medicalRecordId])
-}
-
 model Product {
   id            String      @id @default(cuid())
   sku           String      @unique
@@ -571,6 +659,7 @@ model Product {
 
   batches            InventoryBatch[]
   stockMovements     StockMovement[]
+  prescriptions      Prescription[]
   invoiceItems       InvoiceItem[]
   purchaseOrderItems PurchaseOrderItem[]
 
@@ -592,6 +681,7 @@ model InventoryBatch {
 
   product        Product         @relation(fields: [productId], references: [id])
   stockMovements StockMovement[]
+  prescriptions  Prescription[]
 
   @@index([productId])
   @@index([expiryDate])
