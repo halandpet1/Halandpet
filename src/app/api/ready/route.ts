@@ -6,5 +6,10 @@ export async function GET() {
     return NextResponse.json({ status: 'degraded', reason: 'database-unavailable' }, { status: 503 });
   }
 
-  return NextResponse.json({ status: 'ready' });
+  try {
+    await db.$queryRaw`SELECT 1`;
+    return NextResponse.json({ status: 'ready' });
+  } catch {
+    return NextResponse.json({ status: 'degraded', reason: 'database-unavailable' }, { status: 503 });
+  }
 }

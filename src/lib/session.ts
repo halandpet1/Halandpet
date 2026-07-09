@@ -1,14 +1,22 @@
 import { cookies } from 'next/headers';
-import type { UserRole } from '@prisma/client';
+import type { $Enums } from '@prisma/client';
 
 export type SessionUser = {
   id: string;
-  role: UserRole;
+  role: $Enums.UserRole;
   fullName: string;
 };
 
 const SESSION_COOKIE_NAME = 'haland_session';
-const SESSION_SECRET = process.env.SESSION_SECRET ?? 'dev-session-secret-change-me';
+
+function getSessionSecret() {
+  const configuredSecret = process.env.SESSION_SECRET;
+  if (process.env.NODE_ENV === 'production' && !configuredSecret) {
+    throw new Error('SESSION_SECRET is required in production');
+  }
+
+  return configuredSecret ?? 'dev-session-secret-change-me';
+}
 
 function encodeBase64Url(value: string) {
   const bytes = new TextEncoder().encode(value);
@@ -31,7 +39,7 @@ async function sign(payload: string) {
   const encoder = new TextEncoder();
   const key = await globalThis.crypto.subtle.importKey(
     'raw',
-    encoder.encode(SESSION_SECRET),
+    encoder.encode(getSessionSecret()),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
