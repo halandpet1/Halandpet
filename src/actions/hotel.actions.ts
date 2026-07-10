@@ -2,10 +2,10 @@
 
 import { Prisma, type PaymentMethod, type UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
-import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { parseOrFail, type ActionResult } from '@/lib/action-utils';
+import { createHotelBookingSchema, hotelAssignRoomSchema, hotelAvailabilitySchema, hotelBookingUpdateSchema, hotelCheckInSchema, hotelCheckOutSchema, hotelDailyLogSchema, hotelInventoryUsageSchema, hotelRescheduleSchema, hotelRoomSchema, hotelRoomStatusSchema, hotelStayExtensionSchema } from '@/validators/hotel.schema';
 
 const hotelRoles: UserRole[] = ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'];
 
@@ -39,16 +39,7 @@ export async function createHotelBooking(rawData: unknown): Promise<ActionResult
   const actor = await assertRole(hotelRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const bookingSchema = z.object({
-    customerId: z.string().trim().min(1),
-    petId: z.string().trim().min(1),
-    roomTypeId: z.string().trim().min(1),
-    bookingType: z.enum(['BOARDING', 'GROOMING', 'DAYCARE', 'HOTEL']).default('BOARDING'),
-    checkInDate: z.string().trim().min(1),
-    checkOutDate: z.string().trim().min(1),
-    notes: z.string().trim().optional().or(z.literal('')),
-  });
-  const parsed = await parseOrFail(bookingSchema, rawData);
+  const parsed = await parseOrFail(createHotelBookingSchema, rawData);
   if (!parsed.success) return parsed;
 
   const customer = await db.customer.findUnique({ where: { id: parsed.data.customerId }, select: { id: true } });
@@ -56,17 +47,13 @@ export async function createHotelBooking(rawData: unknown): Promise<ActionResult
   if (!customer || !pet) return { success: false, error: 'Customer atau hewan tidak ditemukan' };
 
   const availableRooms = await db.hotelRoom.findMany({
-    where: { deletedAt: null, type: parsed.data.roomTypeId, status: 'AVAILABLE', cleaningStatus: 'CLEAN' },
+    where: { deletedAt: null, roomTypeId: parsed.data.roomTypeId, status: 'AVAILABLE', cleaningStatus: 'CLEAN' },
     select: { id: true, roomNo: true, capacity: true, status: true, cleaningStatus: true, ratePerNight: true },
   });
 
-  if (!availableRooms.length) return { success: false, error: 'Tidak ada kamar yang tersedia' };
-
-  const room = availableRooms[0];
   const checkIn = new Date(parsed.data.checkInDate);
   const checkOut = new Date(parsed.data.checkOutDate);
   const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
-  const totalAmount = Number(room.ratePerNight) * nights;
 
   const booking = await db.$transaction(async (tx: Prisma.TransactionClient) => {
     const created = await tx.hotelBooking.create({
@@ -74,21 +61,23 @@ export async function createHotelBooking(rawData: unknown): Promise<ActionResult
         bookingNo: createBookingNumber(),
         customerId: parsed.data.customerId,
         petId: parsed.data.petId,
-        roomId: room.id,
+        roomId: availableRooms[0]?.id ?? null,
         roomTypeId: parsed.data.roomTypeId,
         bookingType: parsed.data.bookingType,
         checkInDate: checkIn,
         checkOutDate: checkOut,
-        status: 'RESERVED',
-        totalAmount,
-        roomCharge: totalAmount,
+        status: availableRooms[0] ? 'RESERVED' : 'WAITING_LIST',
+        totalAmount: availableRooms[0] ? Number(availableRooms[0].ratePerNight) * nights : 0,
+        roomCharge: availableRooms[0] ? Number(availableRooms[0].ratePerNight) * nights : 0,
         notes: parsed.data.notes || null,
         createdBy: actor.id,
         updatedBy: actor.id,
       },
     });
 
-    await tx.hotelRoom.update({ where: { id: room.id }, data: { status: 'RESERVED' } });
+    if (availableRooms[0]) {
+      await tx.hotelRoom.update({ where: { id: availableRooms[0].id }, data: { status: 'RESERVED' } });
+    }
     await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'HotelBooking', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
     return created;
   });
@@ -106,17 +95,17 @@ export async function checkInHotelBooking(rawData: unknown): Promise<ActionResul
   const actor = await assertRole(hotelRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const schema = z.object({ bookingId: z.string().trim().min(1) });
-  const parsed = await parseOrFail(schema, rawData);
+  const parsed = await parseOrFail(hotelCheckInSchema, rawData);
   if (!parsed.success) return parsed;
 
   const booking = await db.hotelBooking.findUnique({ where: { id: parsed.data.bookingId }, select: { id: true, status: true, roomId: true } });
   if (!booking) return { success: false, error: 'Booking tidak ditemukan' };
   if (booking.status !== 'RESERVED') return { success: false, error: 'Booking tidak dapat check in' };
+  if (!booking.roomId) return { success: false, error: 'Kamar belum ditugaskan' };
 
   await db.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.hotelBooking.update({ where: { id: booking.id }, data: { status: 'CHECKED_IN', checkedInAt: new Date(), updatedBy: actor.id } });
-    await tx.hotelRoom.update({ where: { id: booking.roomId }, data: { status: 'OCCUPIED', cleaningStatus: 'USED' } });
+    await tx.hotelRoom.update({ where: { id: booking.roomId! }, data: { status: 'OCCUPIED', cleaningStatus: 'USED' } });
     await tx.auditLog.create({ data: { userId: actor.id, action: 'CHECK_IN', entity: 'HotelBooking', entityId: booking.id, changes: { bookingId: booking.id } as Prisma.InputJsonValue } });
   });
 
@@ -129,13 +118,13 @@ export async function checkOutHotelBooking(rawData: unknown): Promise<ActionResu
   const actor = await assertRole(['OWNER', 'ADMIN', 'CASHIER']);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const schema = z.object({ bookingId: z.string().trim().min(1), paymentMethod: z.enum(['CASH', 'CARD', 'DEBIT', 'QRIS', 'TRANSFER']).default('CASH'), amountPaid: z.coerce.number().min(0).default(0) });
-  const parsed = await parseOrFail(schema, rawData);
+  const parsed = await parseOrFail(hotelCheckOutSchema, rawData);
   if (!parsed.success) return parsed;
 
   const booking = await db.hotelBooking.findUnique({ where: { id: parsed.data.bookingId }, select: { id: true, status: true, roomId: true, customerId: true, totalAmount: true, roomCharge: true, foodCharge: true, medicationCharge: true, groomingCharge: true, additionalServiceCharge: true, damageFee: true, lateCheckoutFee: true } });
   if (!booking) return { success: false, error: 'Booking tidak ditemukan' };
   if (booking.status !== 'CHECKED_IN') return { success: false, error: 'Booking belum check in' };
+  if (!booking.roomId) return { success: false, error: 'Kamar belum ditugaskan' };
 
   const invoiceTotal = Number(booking.totalAmount ?? 0) + Number(booking.roomCharge ?? 0) + Number(booking.foodCharge ?? 0) + Number(booking.medicationCharge ?? 0) + Number(booking.groomingCharge ?? 0) + Number(booking.additionalServiceCharge ?? 0) + Number(booking.damageFee ?? 0) + Number(booking.lateCheckoutFee ?? 0);
 
@@ -160,7 +149,7 @@ export async function checkOutHotelBooking(rawData: unknown): Promise<ActionResu
     await tx.invoiceItem.create({ data: { invoiceId: invoice.id, description: 'Hotel stay', qty: 1, unitPrice: invoiceTotal, total: invoiceTotal } });
     await tx.payment.create({ data: { invoiceId: invoice.id, method: parsed.data.paymentMethod as PaymentMethod, amount: parsed.data.amountPaid, referenceNo: null, status: 'SUCCESS', createdBy: actor.id } });
     await tx.hotelBooking.update({ where: { id: booking.id }, data: { status: 'CHECKED_OUT', checkedOutAt: new Date(), updatedBy: actor.id } });
-    await tx.hotelRoom.update({ where: { id: booking.roomId }, data: { status: 'AVAILABLE', cleaningStatus: 'CLEAN' } });
+    await tx.hotelRoom.update({ where: { id: booking.roomId! }, data: { status: 'AVAILABLE', cleaningStatus: 'CLEAN' } });
     await tx.auditLog.create({ data: { userId: actor.id, action: 'CHECK_OUT', entity: 'HotelBooking', entityId: booking.id, changes: { bookingId: booking.id, amountPaid: parsed.data.amountPaid } as Prisma.InputJsonValue } });
     return invoice;
   });
@@ -174,8 +163,7 @@ export async function createHotelRoom(rawData: unknown): Promise<ActionResult<{ 
   const actor = await assertRole(['OWNER', 'ADMIN']);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const roomSchema = z.object({ roomNo: z.string().trim().min(1), name: z.string().trim().min(1), type: z.string().trim().min(1), roomTypeId: z.string().trim().optional().or(z.literal('')), ratePerNight: z.coerce.number().min(0).default(0), capacity: z.coerce.number().int().min(1).default(1), status: z.enum(['AVAILABLE', 'OCCUPIED', 'RESERVED', 'CLEANING', 'MAINTENANCE', 'OUT_OF_SERVICE']).default('AVAILABLE'), cleaningStatus: z.enum(['CLEAN', 'DIRTY', 'IN_PROGRESS']).default('CLEAN') });
-  const parsed = await parseOrFail(roomSchema, rawData);
+  const parsed = await parseOrFail(hotelRoomSchema, rawData);
   if (!parsed.success) return parsed;
 
   const room = await db.hotelRoom.create({ data: { roomNo: parsed.data.roomNo, name: parsed.data.name, type: parsed.data.type, roomTypeId: parsed.data.roomTypeId || null, ratePerNight: parsed.data.ratePerNight, capacity: parsed.data.capacity, status: parsed.data.status, cleaningStatus: parsed.data.cleaningStatus, isActive: true } });
@@ -188,8 +176,7 @@ export async function updateHotelRoomStatus(rawData: unknown): Promise<ActionRes
   const actor = await assertRole(['OWNER', 'ADMIN']);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const schema = z.object({ roomId: z.string().trim().min(1), status: z.enum(['AVAILABLE', 'OCCUPIED', 'RESERVED', 'CLEANING', 'MAINTENANCE', 'OUT_OF_SERVICE']).optional(), cleaningStatus: z.enum(['CLEAN', 'DIRTY', 'IN_PROGRESS']).optional() });
-  const parsed = await parseOrFail(schema, rawData);
+  const parsed = await parseOrFail(hotelRoomStatusSchema, rawData);
   if (!parsed.success) return parsed;
 
   const room = await db.hotelRoom.findUnique({ where: { id: parsed.data.roomId }, select: { id: true } });
@@ -210,8 +197,7 @@ export async function updateHotelBooking(rawData: unknown): Promise<ActionResult
   const actor = await assertRole(hotelRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const schema = z.object({ bookingId: z.string().trim().min(1), status: z.enum(['RESERVED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED']).optional(), cancellationReason: z.string().trim().optional().or(z.literal('')), checkInDate: z.string().trim().optional().or(z.literal('')), checkOutDate: z.string().trim().optional().or(z.literal('')) });
-  const parsed = await parseOrFail(schema, rawData);
+  const parsed = await parseOrFail(hotelBookingUpdateSchema, rawData);
   if (!parsed.success) return parsed;
 
   const booking = await db.hotelBooking.findUnique({ where: { id: parsed.data.bookingId }, select: { id: true, roomId: true, status: true } });
@@ -228,7 +214,7 @@ export async function updateHotelBooking(rawData: unknown): Promise<ActionResult
 
   await db.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.hotelBooking.update({ where: { id: booking.id }, data });
-    if (nextStatus === 'CANCELLED') {
+    if (nextStatus === 'CANCELLED' && booking.roomId) {
       await tx.hotelRoom.update({ where: { id: booking.roomId }, data: { status: 'AVAILABLE', cleaningStatus: 'CLEAN' } });
     }
     await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'HotelBooking', entityId: booking.id, changes: parsed.data as Prisma.InputJsonValue } });
@@ -242,8 +228,7 @@ export async function checkHotelAvailability(rawData: unknown): Promise<ActionRe
   const actor = await assertRole(hotelRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const schema = z.object({ roomTypeId: z.string().trim().optional().or(z.literal('')), checkInDate: z.string().trim().min(1), checkOutDate: z.string().trim().min(1) });
-  const parsed = await parseOrFail(schema, rawData);
+  const parsed = await parseOrFail(hotelAvailabilitySchema, rawData);
   if (!parsed.success) return parsed;
 
   const rooms = await db.hotelRoom.findMany({ where: { deletedAt: null, ...(parsed.data.roomTypeId ? { roomTypeId: parsed.data.roomTypeId } : {}), status: 'AVAILABLE', cleaningStatus: 'CLEAN' }, select: { id: true } });
@@ -255,8 +240,7 @@ export async function createHotelDailyLog(rawData: unknown): Promise<ActionResul
   const actor = await assertRole(hotelRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const schema = z.object({ bookingId: z.string().trim().min(1), notes: z.string().trim().optional().or(z.literal('')), feeding: z.boolean().default(false), medication: z.boolean().default(false), walking: z.boolean().default(false), bath: z.boolean().default(false), play: z.boolean().default(false), weight: z.coerce.number().optional(), temperature: z.coerce.number().optional() });
-  const parsed = await parseOrFail(schema, rawData);
+  const parsed = await parseOrFail(hotelDailyLogSchema, rawData);
   if (!parsed.success) return parsed;
 
   const log = await db.hotelDailyLog.create({ data: { bookingId: parsed.data.bookingId, notes: parsed.data.notes || null, feeding: parsed.data.feeding, medication: parsed.data.medication, walking: parsed.data.walking, bath: parsed.data.bath, play: parsed.data.play, weight: parsed.data.weight ? String(parsed.data.weight) : null, temperature: parsed.data.temperature ? String(parsed.data.temperature) : null, createdBy: actor.id } });
@@ -269,8 +253,7 @@ export async function createHotelInventoryUsage(rawData: unknown): Promise<Actio
   const actor = await assertRole(hotelRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const schema = z.object({ bookingId: z.string().trim().min(1), productId: z.string().trim().min(1), qty: z.coerce.number().int().min(1), notes: z.string().trim().optional().or(z.literal('')) });
-  const parsed = await parseOrFail(schema, rawData);
+  const parsed = await parseOrFail(hotelInventoryUsageSchema, rawData);
   if (!parsed.success) return parsed;
 
   const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -294,6 +277,78 @@ export async function createHotelInventoryUsage(rawData: unknown): Promise<Actio
 
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') revalidatePath('/hotel');
   return { success: true, data: { id: result.id } };
+}
+
+export async function assignHotelBookingRoom(rawData: unknown): Promise<ActionResult<{ id: string }>> {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(hotelRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const parsed = await parseOrFail(hotelAssignRoomSchema, rawData);
+  if (!parsed.success) return parsed;
+
+  const booking = await db.hotelBooking.findUnique({ where: { id: parsed.data.bookingId }, select: { id: true, roomId: true, status: true } });
+  if (!booking) return { success: false, error: 'Booking tidak ditemukan' };
+
+  const room = await db.hotelRoom.findUnique({ where: { id: parsed.data.roomId }, select: { id: true, status: true, cleaningStatus: true } });
+  if (!room) return { success: false, error: 'Kamar tidak ditemukan' };
+  if (room.status !== 'AVAILABLE' || room.cleaningStatus !== 'CLEAN') return { success: false, error: 'Kamar tidak tersedia' };
+
+  const updated = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const nextBooking = await tx.hotelBooking.update({ where: { id: booking.id }, data: { roomId: room.id, status: 'RESERVED', updatedBy: actor.id } });
+    await tx.hotelRoom.update({ where: { id: room.id }, data: { status: 'RESERVED' } });
+    await tx.auditLog.create({ data: { userId: actor.id, action: 'ASSIGN_ROOM', entity: 'HotelBooking', entityId: nextBooking.id, changes: { roomId: room.id } as Prisma.InputJsonValue } });
+    return nextBooking;
+  });
+
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') revalidatePath('/hotel');
+  return { success: true, data: { id: updated.id } };
+}
+
+export async function rescheduleHotelBooking(rawData: unknown): Promise<ActionResult<{ id: string }>> {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(hotelRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const parsed = await parseOrFail(hotelRescheduleSchema, rawData);
+  if (!parsed.success) return parsed;
+
+  const booking = await db.hotelBooking.findUnique({ where: { id: parsed.data.bookingId }, select: { id: true } });
+  if (!booking) return { success: false, error: 'Booking tidak ditemukan' };
+
+  const updated = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const nextBooking = await tx.hotelBooking.update({ where: { id: booking.id }, data: { checkInDate: new Date(parsed.data.checkInDate), checkOutDate: new Date(parsed.data.checkOutDate), updatedBy: actor.id, notes: parsed.data.notes || undefined } });
+    await tx.auditLog.create({ data: { userId: actor.id, action: 'RESCHEDULE', entity: 'HotelBooking', entityId: nextBooking.id, changes: parsed.data as Prisma.InputJsonValue } });
+    return nextBooking;
+  });
+
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') revalidatePath('/hotel');
+  return { success: true, data: { id: updated.id } };
+}
+
+export async function extendHotelBookingStay(rawData: unknown): Promise<ActionResult<{ id: string }>> {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(hotelRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const parsed = await parseOrFail(hotelStayExtensionSchema, rawData);
+  if (!parsed.success) return parsed;
+
+  const booking = await db.hotelBooking.findUnique({ where: { id: parsed.data.bookingId }, select: { id: true, checkOutDate: true, totalAmount: true, roomCharge: true } });
+  if (!booking) return { success: false, error: 'Booking tidak ditemukan' };
+
+  const previousCheckout = booking.checkOutDate instanceof Date ? booking.checkOutDate : new Date(booking.checkOutDate);
+  const nextCheckout = new Date(previousCheckout);
+  nextCheckout.setDate(nextCheckout.getDate() + parsed.data.additionalNights);
+
+  const updated = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const nextBooking = await tx.hotelBooking.update({ where: { id: booking.id }, data: { checkOutDate: nextCheckout, totalAmount: Number(booking.totalAmount ?? 0) + Number(booking.roomCharge ?? 0) * parsed.data.additionalNights, roomCharge: Number(booking.roomCharge ?? 0) + Number(booking.roomCharge ?? 0) * parsed.data.additionalNights, updatedBy: actor.id } });
+    await tx.auditLog.create({ data: { userId: actor.id, action: 'EXTEND_STAY', entity: 'HotelBooking', entityId: nextBooking.id, changes: { additionalNights: parsed.data.additionalNights } as Prisma.InputJsonValue } });
+    return nextBooking;
+  });
+
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') revalidatePath('/hotel');
+  return { success: true, data: { id: updated.id } };
 }
 
 export async function getHotelDashboardSummary() {

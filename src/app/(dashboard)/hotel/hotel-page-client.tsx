@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { checkInHotelBooking, checkOutHotelBooking, createHotelBooking, createHotelDailyLog, getHotelDashboardSummary, getHotelReportingData, updateHotelRoomStatus } from '@/actions/hotel.actions';
+import { assignHotelBookingRoom, checkInHotelBooking, checkOutHotelBooking, createHotelBooking, createHotelDailyLog, extendHotelBookingStay, getHotelDashboardSummary, getHotelReportingData, rescheduleHotelBooking, updateHotelRoomStatus } from '@/actions/hotel.actions';
 
 export function HotelPageClient() {
   const [bookings, setBookings] = useState<Array<{ id: string; bookingNo: string; status: string; totalAmount: number | null; customerName: string; roomNo: string }>>([]);
@@ -15,6 +15,11 @@ export function HotelPageClient() {
   const [checkOutDate, setCheckOutDate] = useState('');
   const [notes, setNotes] = useState('');
   const [roomId, setRoomId] = useState('');
+  const [assignedRoomId, setAssignedRoomId] = useState('');
+  const [selectedBookingId, setSelectedBookingId] = useState('');
+  const [rescheduleCheckIn, setRescheduleCheckIn] = useState('');
+  const [rescheduleCheckOut, setRescheduleCheckOut] = useState('');
+  const [extensionNights, setExtensionNights] = useState('1');
   const [roomStatus, setRoomStatus] = useState('MAINTENANCE');
   const [cleaningStatus, setCleaningStatus] = useState('DIRTY');
 
@@ -61,6 +66,24 @@ export function HotelPageClient() {
     setMessage(result.success ? 'Status kamar diperbarui' : result.error ?? 'Gagal memperbarui status kamar');
   }
 
+  async function handleAssignRoom(event: React.FormEvent) {
+    event.preventDefault();
+    const result = await assignHotelBookingRoom({ bookingId: selectedBookingId, roomId: assignedRoomId });
+    setMessage(result.success ? 'Room assignment berhasil' : result.error ?? 'Gagal assign room');
+  }
+
+  async function handleReschedule(event: React.FormEvent) {
+    event.preventDefault();
+    const result = await rescheduleHotelBooking({ bookingId: selectedBookingId, checkInDate: rescheduleCheckIn, checkOutDate: rescheduleCheckOut, notes: 'Rescheduled from hotel dashboard' });
+    setMessage(result.success ? 'Booking berhasil direschedule' : result.error ?? 'Gagal reschedule booking');
+  }
+
+  async function handleExtendStay(event: React.FormEvent) {
+    event.preventDefault();
+    const result = await extendHotelBookingStay({ bookingId: selectedBookingId, additionalNights: Number(extensionNights || 1) });
+    setMessage(result.success ? 'Stay berhasil diperpanjang' : result.error ?? 'Gagal memperpanjang stay');
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -74,8 +97,8 @@ export function HotelPageClient() {
           <p className="mt-2 text-2xl font-semibold">{dashboard?.currentGuests ?? 0}</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
-          <p className="text-sm text-slate-400">Room Availability</p>
-          <p className="mt-2 text-2xl font-semibold">{dashboard?.availableRooms ?? 0}</p>
+          <p className="text-sm text-slate-400">Expected Check In</p>
+          <p className="mt-2 text-2xl font-semibold">{bookings.filter((item) => item.status === 'RESERVED').length}</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
           <p className="text-sm text-slate-400">Cleaning Queue</p>
@@ -119,7 +142,8 @@ export function HotelPageClient() {
                   </div>
                   <p className="text-sm text-emerald-400">{item.status}</p>
                 </div>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { setSelectedBookingId(item.id); setAssignedRoomId(''); }} className="rounded-lg bg-slate-800 px-3 py-2 text-sm">Select</button>
                   <button type="button" onClick={() => void handleCheckIn(item.id)} className="rounded-lg bg-slate-800 px-3 py-2 text-sm">Check In</button>
                   <button type="button" onClick={() => void handleCheckOut(item.id)} className="rounded-lg bg-amber-600 px-3 py-2 text-sm">Check Out</button>
                   <button type="button" onClick={() => void handleDailyCare(item.id)} className="rounded-lg bg-slate-800 px-3 py-2 text-sm">Daily Care</button>
@@ -128,6 +152,36 @@ export function HotelPageClient() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <form onSubmit={handleAssignRoom} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
+          <h2 className="text-xl font-semibold">Assign Room</h2>
+          <div className="mt-4 space-y-3">
+            <input value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} placeholder="Booking ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <input value={assignedRoomId} onChange={(event) => setAssignedRoomId(event.target.value)} placeholder="Room ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          </div>
+          <button type="submit" className="mt-4 w-full rounded-lg bg-emerald-600 px-4 py-3 font-semibold">Assign</button>
+        </form>
+
+        <form onSubmit={handleReschedule} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
+          <h2 className="text-xl font-semibold">Reschedule</h2>
+          <div className="mt-4 space-y-3">
+            <input value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} placeholder="Booking ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <input type="date" value={rescheduleCheckIn} onChange={(event) => setRescheduleCheckIn(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <input type="date" value={rescheduleCheckOut} onChange={(event) => setRescheduleCheckOut(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          </div>
+          <button type="submit" className="mt-4 w-full rounded-lg bg-slate-800 px-4 py-3 font-semibold">Reschedule</button>
+        </form>
+
+        <form onSubmit={handleExtendStay} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
+          <h2 className="text-xl font-semibold">Extend Stay</h2>
+          <div className="mt-4 space-y-3">
+            <input value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} placeholder="Booking ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <input type="number" min="1" value={extensionNights} onChange={(event) => setExtensionNights(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          </div>
+          <button type="submit" className="mt-4 w-full rounded-lg bg-amber-600 px-4 py-3 font-semibold">Extend</button>
+        </form>
       </div>
 
       <form onSubmit={handleRoomStatusUpdate} className="rounded-2xl border border-white/10 bg-slate-900 p-6">

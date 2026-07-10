@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { Home, Users, Stethoscope, Boxes, ShoppingCart, Hotel, BarChart3, ShieldCheck } from 'lucide-react';
+import { Home, Users, Stethoscope, Boxes, ShoppingCart, Hotel, BarChart3, ShieldCheck, UserCircle2 } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
+  { href: '/portal', label: 'Portal Pelanggan', icon: UserCircle2 },
   { href: '/customers', label: 'Pelanggan', icon: Users },
   { href: '/clinical', label: 'Klinis', icon: Stethoscope },
   { href: '/inventory', label: 'Inventaris', icon: Boxes },

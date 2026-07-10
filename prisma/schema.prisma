@@ -107,6 +107,8 @@ enum HotelBookingStatus {
   CHECKED_IN
   CHECKED_OUT
   CANCELLED
+  WAITING_LIST
+  NO_SHOW
 }
 
 enum ProductType {
@@ -1229,7 +1231,7 @@ model HotelBooking {
   bookingNo               String             @unique
   customerId              String
   petId                   String?
-  roomId                  String
+  roomId                  String?
   roomTypeId              String?
   bookingType             String             @default("BOARDING")
   checkInDate             DateTime
@@ -1254,7 +1256,7 @@ model HotelBooking {
 
   customer      Customer  @relation(fields: [customerId], references: [id])
   pet           Pet?      @relation(fields: [petId], references: [id])
-  room          HotelRoom @relation(fields: [roomId], references: [id])
+  room          HotelRoom? @relation(fields: [roomId], references: [id])
   createdByUser User?     @relation("HotelBookingCreatedByUser", fields: [createdBy], references: [id])
   dailyLogs     HotelDailyLog[]
   inventoryUsages HotelInventoryUsage[]

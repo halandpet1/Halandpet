@@ -23,7 +23,7 @@ const getSessionUserMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/session', () => ({ getSessionUser: getSessionUserMock }));
 
-import { checkHotelAvailability, checkInHotelBooking, checkOutHotelBooking, createHotelBooking, createHotelDailyLog, createHotelInventoryUsage, createHotelRoom, getHotelDashboardSummary, getHotelReportingData, updateHotelBooking, updateHotelRoomStatus } from './hotel.actions';
+import { assignHotelBookingRoom, checkHotelAvailability, checkInHotelBooking, checkOutHotelBooking, createHotelBooking, createHotelDailyLog, createHotelInventoryUsage, createHotelRoom, extendHotelBookingStay, getHotelDashboardSummary, getHotelReportingData, rescheduleHotelBooking, updateHotelBooking, updateHotelRoomStatus } from './hotel.actions';
 
 describe('hotel actions', () => {
   beforeEach(() => {
@@ -115,13 +115,54 @@ describe('hotel actions', () => {
     }
   });
 
-  it('updates a booking to reschedule or cancel', async () => {
+  it('creates a waiting-list booking when no room is available', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-7', role: 'STAFF', fullName: 'Staff' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-7', role: 'STAFF', isActive: true, deletedAt: null });
-    dbMock.hotelBooking.findUnique.mockResolvedValue({ id: 'booking-7', status: 'RESERVED', roomId: 'room-1' });
-    dbMock.hotelBooking.update.mockResolvedValue({ id: 'booking-7', status: 'CANCELLED' });
+    dbMock.customer.findUnique.mockResolvedValue({ id: 'cust-1', name: 'Budi' });
+    dbMock.pet.findUnique.mockResolvedValue({ id: 'pet-1', name: 'Milo' });
+    dbMock.hotelRoom.findMany.mockResolvedValue([]);
+    dbMock.hotelBooking.create.mockResolvedValue({ id: 'booking-wl', bookingNo: 'HTL-WL', status: 'WAITING_LIST' });
 
-    const result = await updateHotelBooking({ bookingId: 'booking-7', status: 'CANCELLED', cancellationReason: 'Customer request' });
+    const result = await createHotelBooking({ customerId: 'cust-1', petId: 'pet-1', roomTypeId: 'type-1', bookingType: 'BOARDING', checkInDate: '2026-07-10', checkOutDate: '2026-07-12' });
+
+    expect(result.success).toBe(true);
+    expect(dbMock.hotelBooking.create).toHaveBeenCalled();
+  });
+
+  it('assigns a room to a waiting-list booking', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-8', role: 'STAFF', fullName: 'Staff' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-8', role: 'STAFF', isActive: true, deletedAt: null });
+    dbMock.hotelBooking.findUnique.mockResolvedValue({ id: 'booking-7', status: 'WAITING_LIST', roomId: 'room-1' });
+    dbMock.hotelRoom.findUnique.mockResolvedValue({ id: 'room-2', status: 'AVAILABLE', cleaningStatus: 'CLEAN' });
+    dbMock.hotelBooking.update.mockResolvedValue({ id: 'booking-7', status: 'RESERVED' });
+
+    const result = await assignHotelBookingRoom({ bookingId: 'booking-7', roomId: 'room-2' });
+
+    expect(result.success).toBe(true);
+    expect(dbMock.hotelBooking.update).toHaveBeenCalled();
+  });
+
+  it('reschedules a booking and extends the stay', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-9', role: 'STAFF', fullName: 'Staff' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-9', role: 'STAFF', isActive: true, deletedAt: null });
+    dbMock.hotelBooking.findUnique.mockResolvedValue({ id: 'booking-8', status: 'RESERVED', roomId: 'room-1' });
+    dbMock.hotelBooking.update.mockResolvedValue({ id: 'booking-8', status: 'RESERVED' });
+
+    const rescheduleResult = await rescheduleHotelBooking({ bookingId: 'booking-8', checkInDate: '2026-07-11', checkOutDate: '2026-07-14' });
+    const extendResult = await extendHotelBookingStay({ bookingId: 'booking-8', additionalNights: 2 });
+
+    expect(rescheduleResult.success).toBe(true);
+    expect(extendResult.success).toBe(true);
+    expect(dbMock.hotelBooking.update).toHaveBeenCalled();
+  });
+
+  it('updates a booking to cancel', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-10', role: 'STAFF', fullName: 'Staff' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-10', role: 'STAFF', isActive: true, deletedAt: null });
+    dbMock.hotelBooking.findUnique.mockResolvedValue({ id: 'booking-9', status: 'RESERVED', roomId: 'room-1' });
+    dbMock.hotelBooking.update.mockResolvedValue({ id: 'booking-9', status: 'CANCELLED' });
+
+    const result = await updateHotelBooking({ bookingId: 'booking-9', status: 'CANCELLED', cancellationReason: 'Customer request' });
 
     expect(result.success).toBe(true);
     expect(dbMock.hotelBooking.update).toHaveBeenCalled();
