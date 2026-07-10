@@ -14,10 +14,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm install
-      - run: npm run lint
-      - run: npm run test
-      - run: npx tsc --noEmit
-      - run: npm run build
+      - run: npm ci
       - run: npx prisma generate
       - run: npx prisma validate
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run test:coverage
+      - run: npx tsc --noEmit
+      - run: npm run build

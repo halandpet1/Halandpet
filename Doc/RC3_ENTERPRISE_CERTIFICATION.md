@@ -11,12 +11,13 @@ This repository is now operationally hardened for staged rollout and enterprise 
 - The session secret is now required in production mode, which prevents silent insecure defaults.
 
 ## Evidence
-- Verified with: npm run lint
-- Verified with: npm run test
-- Verified with: npx tsc --noEmit
-- Verified with: npm run build
-- Verified with: npx prisma generate
-- Verified with: npx prisma validate
+- Verified with: npm run lint ✅
+- Verified with: npm run test ✅
+- Verified with: npm run test:coverage ✅
+- Verified with: npx tsc --noEmit ✅
+- Verified with: npm run build ✅
+- Verified with: npx prisma generate ✅
+- Verified with: npx prisma validate ✅
 
 ## Risk Level
 Medium

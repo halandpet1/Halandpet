@@ -1,5 +1,19 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Verification Status
+
+The repository is currently verified locally with:
+
+- npm run lint
+- npm run test
+- npm run test:coverage
+- npx tsc --noEmit
+- npm run build
+- npx prisma generate
+- npx prisma validate
+
+These checks were run successfully in the current workspace.
+
 ## Module 4 Status
 
 Module 4 inventory, pharmacy, and procurement has been extended with production-oriented server actions for:
