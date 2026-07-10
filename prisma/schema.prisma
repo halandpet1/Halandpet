@@ -97,6 +97,7 @@ enum InvoiceSource {
 enum PaymentMethod {
   CASH
   CARD
+  DEBIT
   QRIS
   TRANSFER
 }
@@ -168,7 +169,10 @@ model User {
   updatedInvoices  Invoice[]       @relation("InvoiceUpdatedByUser")
   auditLogs        AuditLog[]
   notifications    Notification[]
-  bookings         HotelBooking[]
+  bookings         HotelBooking[] @relation("HotelBookingCreatedByUser")
+  hotelDailyLogs   HotelDailyLog[] @relation("HotelDailyLogCreator")
+  hotelInventoryUsages HotelInventoryUsage[] @relation("HotelInventoryUsageCreator")
+  cashRegisterShifts CashRegisterShift[]
 
   @@index([role])
   @@index([isActive])
@@ -209,6 +213,8 @@ model Customer {
   invoices       Invoice[]
   bookings       HotelBooking[]
   medicalRecords MedicalRecord[]
+  membership     CustomerMembership?
+  loyaltyPoints  LoyaltyPointLedger[]
 
   @@index([name])
   @@index([phone])
@@ -285,6 +291,7 @@ model Pet {
   allergies        Allergy[]
   diseaseHistory   DiseaseHistory[]
   attachments      Attachment[]
+  hotelBookings    HotelBooking[]
 
   @@index([customerId])
   @@index([speciesId])
@@ -687,6 +694,7 @@ model Product {
   warehouseTransferItems WarehouseTransferItem[]
   stockReturns       StockReturn[]
   disposals          Disposal[]
+  hotelInventoryUsages HotelInventoryUsage[]
 
   @@index([name])
   @@index([type])
@@ -1030,28 +1038,38 @@ model StockMovement {
 }
 
 model Invoice {
-  id         String        @id @default(cuid())
-  invoiceNo  String        @unique
-  customerId String
-  status     InvoiceStatus @default(PENDING)
-  source     InvoiceSource @default(CLINIC)
-  subtotal   Decimal       @db.Decimal(10, 2)
-  tax        Decimal       @db.Decimal(10, 2)
-  discount   Decimal       @db.Decimal(10, 2)
-  total      Decimal       @db.Decimal(10, 2)
-  paidAmount Decimal       @default(0) @db.Decimal(10, 2)
-  notes      String?
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  deletedAt  DateTime?
-  createdBy  String?
-  updatedBy  String?
+  id           String        @id @default(cuid())
+  invoiceNo    String        @unique
+  customerId   String
+  status       InvoiceStatus @default(PENDING)
+  source       InvoiceSource @default(CLINIC)
+  subtotal     Decimal       @db.Decimal(10, 2)
+  tax          Decimal       @db.Decimal(10, 2)
+  discount     Decimal       @db.Decimal(10, 2)
+  total        Decimal       @db.Decimal(10, 2)
+  paidAmount   Decimal       @default(0) @db.Decimal(10, 2)
+  dueDate      DateTime?
+  paymentTerms String?
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  createdBy    String?
+  updatedBy    String?
+  cashierId     String?
+  receiptNo     String?
+  voucherCode   String?
+  voucherDiscount Decimal?      @db.Decimal(10, 2)
+  membershipDiscount Decimal?    @db.Decimal(10, 2)
+  promotionCode  String?
+  promotionDiscount Decimal?    @db.Decimal(10, 2)
 
   customer      Customer      @relation(fields: [customerId], references: [id])
   createdByUser User?         @relation("InvoiceCreatedByUser", fields: [createdBy], references: [id])
   updatedByUser User?         @relation("InvoiceUpdatedByUser", fields: [updatedBy], references: [id])
   items         InvoiceItem[]
   payments      Payment[]
+  loyaltyPoints LoyaltyPointLedger[]
 
   @@index([customerId])
   @@index([status])
@@ -1090,42 +1108,199 @@ model Payment {
   @@index([invoiceId])
 }
 
+model CustomerMembership {
+  id                 String    @id @default(cuid())
+  customerId         String    @unique
+  tier               String    @default("STANDARD")
+  status             String    @default("ACTIVE")
+  discountPercent    Int       @default(0)
+  points             Int       @default(0)
+  pointsExpiryDate   DateTime?
+  lastActivityAt     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  createdBy          String?
+  updatedBy          String?
+
+  customer Customer @relation(fields: [customerId], references: [id])
+}
+
+model LoyaltyPointLedger {
+  id          String   @id @default(cuid())
+  customerId  String
+  invoiceId   String?
+  entryType   String
+  amount      Int
+  balanceAfter Int
+  reason      String?
+  createdAt   DateTime @default(now())
+  createdBy   String?
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([customerId])
+  @@index([invoiceId])
+}
+
+model Voucher {
+  id                  String    @id @default(cuid())
+  code                String    @unique
+  description         String?
+  type                String    @default("PERCENTAGE")
+  value               Int       @default(0)
+  minPurchase         Decimal   @default(0) @db.Decimal(10, 2)
+  maxDiscount         Decimal?  @db.Decimal(10, 2)
+  usageLimit          Int?
+  usageCount          Int       @default(0)
+  expiresAt           DateTime?
+  applicableCustomerId String?
+  applicableProductId String?
+  applicableCategory  String?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model Promotion {
+  id                  String    @id @default(cuid())
+  name                String
+  code                String?
+  type                String    @default("PERCENTAGE")
+  value               Int       @default(0)
+  minPurchase         Decimal   @default(0) @db.Decimal(10, 2)
+  maxDiscount         Decimal?  @db.Decimal(10, 2)
+  startsAt            DateTime?
+  endsAt              DateTime?
+  usageLimit          Int?
+  usageCount          Int       @default(0)
+  isAuto              Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model CashRegisterShift {
+  id               String    @id @default(cuid())
+  cashierId        String
+  status           String    @default("OPEN")
+  openingBalance   Decimal   @default(0) @db.Decimal(10, 2)
+  cashIn           Decimal   @default(0) @db.Decimal(10, 2)
+  cashOut          Decimal   @default(0) @db.Decimal(10, 2)
+  expectedBalance  Decimal   @default(0) @db.Decimal(10, 2)
+  closingBalance   Decimal?  @db.Decimal(10, 2)
+  difference       Decimal?  @db.Decimal(10, 2)
+  openedAt         DateTime  @default(now())
+  closedAt         DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  cashier User @relation(fields: [cashierId], references: [id])
+
+  @@index([cashierId])
+  @@index([status])
+}
+
 model HotelRoom {
-  id           String    @id @default(cuid())
-  roomNo       String    @unique
-  name         String
-  type         String
-  ratePerNight Decimal   @db.Decimal(10, 2)
-  capacity     Int       @default(1)
-  status       String    @default("AVAILABLE")
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id              String    @id @default(cuid())
+  roomNo          String    @unique
+  name            String
+  type            String
+  roomTypeId      String?
+  ratePerNight    Decimal   @db.Decimal(10, 2)
+  capacity        Int       @default(1)
+  status          String    @default("AVAILABLE")
+  cleaningStatus  String    @default("CLEAN")
+  lastCleanedAt   DateTime?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   bookings HotelBooking[]
+
+  @@index([status])
+  @@index([cleaningStatus])
 }
 
 model HotelBooking {
-  id           String             @id @default(cuid())
-  customerId   String
-  roomId       String
-  checkInDate  DateTime
-  checkOutDate DateTime
-  status       HotelBookingStatus @default(RESERVED)
-  totalAmount  Decimal            @db.Decimal(10, 2)
-  notes        String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  deletedAt    DateTime?
-  createdBy    String?
-  updatedBy    String?
+  id                      String             @id @default(cuid())
+  bookingNo               String             @unique
+  customerId              String
+  petId                   String?
+  roomId                  String
+  roomTypeId              String?
+  bookingType             String             @default("BOARDING")
+  checkInDate             DateTime
+  checkOutDate            DateTime
+  status                  HotelBookingStatus @default(RESERVED)
+  totalAmount             Decimal            @db.Decimal(10, 2)
+  roomCharge              Decimal            @default(0) @db.Decimal(10, 2)
+  foodCharge              Decimal            @default(0) @db.Decimal(10, 2)
+  medicationCharge        Decimal            @default(0) @db.Decimal(10, 2)
+  groomingCharge          Decimal            @default(0) @db.Decimal(10, 2)
+  additionalServiceCharge Decimal            @default(0) @db.Decimal(10, 2)
+  damageFee               Decimal            @default(0) @db.Decimal(10, 2)
+  lateCheckoutFee         Decimal            @default(0) @db.Decimal(10, 2)
+  notes                   String?
+  checkedInAt             DateTime?
+  checkedOutAt            DateTime?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  deletedAt               DateTime?
+  createdBy               String?
+  updatedBy               String?
 
   customer      Customer  @relation(fields: [customerId], references: [id])
+  pet           Pet?      @relation(fields: [petId], references: [id])
   room          HotelRoom @relation(fields: [roomId], references: [id])
-  createdByUser User?     @relation(fields: [createdBy], references: [id])
+  createdByUser User?     @relation("HotelBookingCreatedByUser", fields: [createdBy], references: [id])
+  dailyLogs     HotelDailyLog[]
+  inventoryUsages HotelInventoryUsage[]
 
   @@index([customerId])
+  @@index([petId])
   @@index([status])
+  @@index([checkInDate])
+  @@index([checkOutDate])
+}
+
+model HotelDailyLog {
+  id           String    @id @default(cuid())
+  bookingId    String
+  notes        String?
+  feeding      Boolean   @default(false)
+  medication   Boolean   @default(false)
+  walking      Boolean   @default(false)
+  bath         Boolean   @default(false)
+  play         Boolean   @default(false)
+  weight       String?
+  temperature  String?
+  createdAt    DateTime  @default(now())
+  createdBy    String?
+
+  booking HotelBooking @relation(fields: [bookingId], references: [id])
+  creator User?        @relation("HotelDailyLogCreator", fields: [createdBy], references: [id])
+
+  @@index([bookingId])
+}
+
+model HotelInventoryUsage {
+  id           String    @id @default(cuid())
+  bookingId    String
+  productId    String
+  qty          Int
+  notes        String?
+  createdAt    DateTime  @default(now())
+  createdBy    String?
+
+  booking HotelBooking @relation(fields: [bookingId], references: [id])
+  product Product      @relation(fields: [productId], references: [id])
+  creator User?        @relation("HotelInventoryUsageCreator", fields: [createdBy], references: [id])
+
+  @@index([bookingId])
+  @@index([productId])
 }
 
 model AuditLog {
