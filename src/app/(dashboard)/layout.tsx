@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Home, Users, Stethoscope, Boxes, ShoppingCart, Hotel, BarChart3, ShieldCheck, UserCircle2 } from 'lucide-react';
+import { Home, Users, Stethoscope, Boxes, ShoppingCart, Hotel, BarChart3, ShieldCheck, UserCircle2, Settings, Activity } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
@@ -10,6 +10,8 @@ const navItems = [
   { href: '/pos', label: 'POS', icon: ShoppingCart },
   { href: '/hotel', label: 'Pet Hotel', icon: Hotel },
   { href: '/reports', label: 'Laporan', icon: BarChart3 },
+  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/monitoring', label: 'Monitoring', icon: Activity },
   { href: '/admin', label: 'Administrasi', icon: ShieldCheck },
 ];
 
