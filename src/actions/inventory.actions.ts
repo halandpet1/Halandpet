@@ -7,6 +7,7 @@ import { getSessionUser } from '@/lib/session';
 import { parseOrFail, type ActionResult } from '@/lib/action-utils';
 import { disposalSchema, goodsReceiptSchema, productSchema, purchaseOrderSchema, purchaseRequestSchema, stockAdjustmentSchema, stockOpnameSchema, stockReturnSchema, supplierInvoiceSchema, supplierPaymentSchema, supplierSchema, warehouseSchema, warehouseTransferSchema } from '@/validators/inventory.schema';
 import { selectFefoBatch } from '@/lib/inventory-utils';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 const inventoryRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'];
 const approvalRoles: UserRole[] = ['OWNER', 'ADMIN'];
@@ -24,6 +25,15 @@ async function assertRole(allowedRoles: UserRole[]) {
   return { id: dbUser.id, role: dbUser.role, fullName: user.fullName };
 }
 
+async function assertRateLimit(actorId: string, scope: string) {
+  const result = await checkRateLimit(`inventory:${actorId}:${scope}`, { max: 20, windowMs: 60_000 });
+  if (!result.allowed) {
+    return { success: false as const, error: `Terlalu banyak permintaan. Coba lagi dalam ${Math.ceil(result.retryAfterMs / 1000)} detik.` };
+  }
+
+  return null;
+}
+
 function parseDate(value: string | undefined | null) {
   if (!value) {
     return null;
@@ -36,6 +46,9 @@ export async function createProduct(rawData: unknown): Promise<ActionResult<{ id
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const rateLimited = await assertRateLimit(actor.id, 'create-product');
+  if (rateLimited) return rateLimited;
 
   const parsed = await parseOrFail(productSchema, rawData);
   if (!parsed.success) return parsed;
@@ -102,6 +115,9 @@ export async function createSupplier(rawData: unknown): Promise<ActionResult<{ i
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
+  const rateLimited = await assertRateLimit(actor.id, 'create-supplier');
+  if (rateLimited) return rateLimited;
+
   const parsed = await parseOrFail(supplierSchema, rawData);
   if (!parsed.success) return parsed;
 
@@ -121,6 +137,9 @@ export async function createWarehouse(rawData: unknown): Promise<ActionResult<{ 
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const rateLimited = await assertRateLimit(actor.id, 'create-warehouse');
+  if (rateLimited) return rateLimited;
 
   const parsed = await parseOrFail(warehouseSchema, rawData);
   if (!parsed.success) return parsed;
@@ -142,6 +161,9 @@ export async function createPurchaseRequest(rawData: unknown): Promise<ActionRes
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
+  const rateLimited = await assertRateLimit(actor.id, 'create-purchase-request');
+  if (rateLimited) return rateLimited;
+
   const parsed = await parseOrFail(purchaseRequestSchema, rawData);
   if (!parsed.success) return parsed;
 
@@ -161,6 +183,9 @@ export async function createPurchaseOrder(rawData: unknown): Promise<ActionResul
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const rateLimited = await assertRateLimit(actor.id, 'create-purchase-order');
+  if (rateLimited) return rateLimited;
 
   const parsed = await parseOrFail(purchaseOrderSchema, rawData);
   if (!parsed.success) return parsed;
@@ -198,6 +223,9 @@ export async function createGoodsReceipt(rawData: unknown): Promise<ActionResult
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const rateLimited = await assertRateLimit(actor.id, 'create-goods-receipt');
+  if (rateLimited) return rateLimited;
 
   const parsed = await parseOrFail(goodsReceiptSchema, rawData);
   if (!parsed.success) return parsed;
@@ -279,6 +307,9 @@ export async function createSupplierInvoice(rawData: unknown): Promise<ActionRes
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
+  const rateLimited = await assertRateLimit(actor.id, 'create-supplier-invoice');
+  if (rateLimited) return rateLimited;
+
   const parsed = await parseOrFail(supplierInvoiceSchema, rawData);
   if (!parsed.success) return parsed;
 
@@ -314,6 +345,9 @@ export async function createSupplierPayment(rawData: unknown): Promise<ActionRes
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const rateLimited = await assertRateLimit(actor.id, 'create-supplier-payment');
+  if (rateLimited) return rateLimited;
 
   const parsed = await parseOrFail(supplierPaymentSchema, rawData);
   if (!parsed.success) return parsed;
@@ -352,6 +386,9 @@ export async function createWarehouseTransfer(rawData: unknown): Promise<ActionR
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(inventoryRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const rateLimited = await assertRateLimit(actor.id, 'create-warehouse-transfer');
+  if (rateLimited) return rateLimited;
 
   const parsed = await parseOrFail(warehouseTransferSchema, rawData);
   if (!parsed.success) return parsed;
@@ -683,6 +720,72 @@ export async function createDispensing(rawData: unknown): Promise<ActionResult<{
     revalidatePath('/inventory');
   }
   return { success: true, data: result };
+}
+
+export async function listSuppliers(params?: { page?: number; pageSize?: number; search?: string }) {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(inventoryRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const page = params?.page ?? 1;
+  const pageSize = params?.pageSize ?? 20;
+  const search = params?.search?.trim();
+
+  const where = {
+    deletedAt: null,
+    ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    db.supplier.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize, select: { id: true, name: true, status: true } }),
+    db.supplier.count({ where }),
+  ]);
+
+  return { success: true, data: { items, total, page, pageSize } };
+}
+
+export async function listWarehouses(params?: { page?: number; pageSize?: number; search?: string }) {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(inventoryRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const page = params?.page ?? 1;
+  const pageSize = params?.pageSize ?? 20;
+  const search = params?.search?.trim();
+
+  const where = {
+    deletedAt: null,
+    ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { code: { contains: search, mode: 'insensitive' as const } }] } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    db.warehouse.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize, select: { id: true, name: true, code: true, location: true, isDefault: true } }),
+    db.warehouse.count({ where }),
+  ]);
+
+  return { success: true, data: { items, total, page, pageSize } };
+}
+
+export async function listPurchaseOrders(params?: { page?: number; pageSize?: number; search?: string }) {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(inventoryRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const page = params?.page ?? 1;
+  const pageSize = params?.pageSize ?? 20;
+  const search = params?.search?.trim();
+
+  const where = {
+    deletedAt: null,
+    ...(search ? { OR: [{ poNumber: { contains: search, mode: 'insensitive' as const } }, { supplierName: { contains: search, mode: 'insensitive' as const } }] } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    db.purchaseOrder.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize, select: { id: true, poNumber: true, supplierName: true, status: true, total: true } }),
+    db.purchaseOrder.count({ where }),
+  ]);
+
+  return { success: true, data: { items, total, page, pageSize } };
 }
 
 export async function listInventoryMovements(params?: { page?: number; pageSize?: number; search?: string }) {

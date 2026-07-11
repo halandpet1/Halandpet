@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { hashPin, verifyPin } from '@/lib/auth';
 import { setSessionCookie } from '@/lib/session';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { usernameSchema, pinSchema } from '@/validators/common.schema';
 import { z } from 'zod';
 
@@ -22,6 +23,12 @@ export async function loginAction(rawData: FormData | Record<string, unknown>) {
 
   if (!parsed.success) {
     return { success: false, error: 'Data login tidak valid', fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+
+  const rateLimitKey = `login:${parsed.data.username.toLowerCase()}`;
+  const rateLimitResult = await checkRateLimit(rateLimitKey, { max: 5, windowMs: 60_000 });
+  if (!rateLimitResult.allowed) {
+    return { success: false, error: `Terlalu banyak percobaan login. Silakan coba lagi dalam ${Math.ceil(rateLimitResult.retryAfterMs / 1000)} detik.` };
   }
 
   const user = await db.user.findFirst({

@@ -28,10 +28,28 @@ function createBookingNumber() {
   return `HTL-${yearMonth}-${String(Date.now()).slice(-4)}`;
 }
 
-function createInvoiceNumber() {
+async function createInvoiceNumber(tx: Prisma.TransactionClient) {
   const now = new Date();
   const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  return `INV-${yearMonth}-${String(Date.now()).slice(-5)}`;
+  const sequenceClient = (tx as Prisma.TransactionClient & { invoiceSequence?: { findUnique: (args: { where: { yearMonth: string } }) => Promise<{ nextNumber: number } | null>; upsert: (args: { where: { yearMonth: string }; update: { nextNumber: number }; create: { yearMonth: string; nextNumber: number } }) => Promise<unknown> } }).invoiceSequence;
+
+  if (sequenceClient?.findUnique && sequenceClient?.upsert) {
+    const sequence = await sequenceClient.findUnique({ where: { yearMonth } });
+    const nextNumber = sequence ? sequence.nextNumber : 1;
+    const invoiceNo = `INV-${yearMonth}-${String(nextNumber).padStart(5, '0')}`;
+
+    await sequenceClient.upsert({
+      where: { yearMonth },
+      update: { nextNumber: nextNumber + 1 },
+      create: { yearMonth, nextNumber: nextNumber + 1 },
+    });
+
+    return invoiceNo;
+  }
+
+  const counter = (globalThis as typeof globalThis & { __invoiceSequenceCounter?: number }).__invoiceSequenceCounter ?? 1;
+  (globalThis as typeof globalThis & { __invoiceSequenceCounter?: number }).__invoiceSequenceCounter = counter + 1;
+  return `INV-${yearMonth}-${String(counter).padStart(5, '0')}`;
 }
 
 export async function createHotelBooking(rawData: unknown): Promise<ActionResult<{ id: string; bookingNo: string }>> {
@@ -131,7 +149,7 @@ export async function checkOutHotelBooking(rawData: unknown): Promise<ActionResu
   const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
     const invoice = await tx.invoice.create({
       data: {
-        invoiceNo: createInvoiceNumber(),
+        invoiceNo: await createInvoiceNumber(tx),
         customerId: booking.customerId,
         status: 'PAID',
         source: 'HOTEL',

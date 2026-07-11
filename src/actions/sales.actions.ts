@@ -24,10 +24,28 @@ async function assertRole(allowedRoles: UserRole[]) {
   return { id: dbUser.id, role: dbUser.role, fullName: user.fullName };
 }
 
-function createInvoiceNumber() {
+async function createInvoiceNumber(tx: Prisma.TransactionClient) {
   const now = new Date();
   const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  return `INV-${yearMonth}-${String(Date.now()).slice(-5)}`;
+  const sequenceClient = (tx as Prisma.TransactionClient & { invoiceSequence?: { findUnique: (args: { where: { yearMonth: string } }) => Promise<{ nextNumber: number } | null>; upsert: (args: { where: { yearMonth: string }; update: { nextNumber: number }; create: { yearMonth: string; nextNumber: number } }) => Promise<unknown> } }).invoiceSequence;
+
+  if (sequenceClient?.findUnique && sequenceClient?.upsert) {
+    const sequence = await sequenceClient.findUnique({ where: { yearMonth } });
+    const nextNumber = sequence ? sequence.nextNumber : 1;
+    const invoiceNo = `INV-${yearMonth}-${String(nextNumber).padStart(5, '0')}`;
+
+    await sequenceClient.upsert({
+      where: { yearMonth },
+      update: { nextNumber: nextNumber + 1 },
+      create: { yearMonth, nextNumber: nextNumber + 1 },
+    });
+
+    return invoiceNo;
+  }
+
+  const counter = (globalThis as typeof globalThis & { __invoiceSequenceCounter?: number }).__invoiceSequenceCounter ?? 1;
+  (globalThis as typeof globalThis & { __invoiceSequenceCounter?: number }).__invoiceSequenceCounter = counter + 1;
+  return `INV-${yearMonth}-${String(counter).padStart(5, '0')}`;
 }
 
 export async function createPosCheckout(rawData: unknown): Promise<ActionResult<{ id: string; invoiceNo: string; receiptNo: string | null }>> {
@@ -43,7 +61,7 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
     const invoiceTotal = parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0) - parsed.data.discount;
     const invoice = await tx.invoice.create({
       data: {
-        invoiceNo: createInvoiceNumber(),
+        invoiceNo: await createInvoiceNumber(tx),
         customerId: parsed.data.customerId || 'cl-walk-in',
         status: parsed.data.amountPaid > 0 ? 'PARTIAL' : 'PENDING',
         source: 'POS',

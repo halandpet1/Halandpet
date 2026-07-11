@@ -375,22 +375,27 @@ model DiseaseHistory {
 }
 
 model Attachment {
-  id          String    @id @default(cuid())
-  entityType  String
-  entityId    String
-  fileName    String
-  fileUrl     String
-  mimeType    String
-  fileSize    Int
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  createdBy   String?
-  updatedBy   String?
-  deletedAt   DateTime?
+  id                String    @id @default(cuid())
+  entityType        String
+  entityId          String
+  petId             String?
+  medicalRecordId   String?
+  fileName          String
+  fileUrl           String
+  mimeType          String
+  fileSize          Int
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  createdBy         String?
+  updatedBy         String?
+  deletedAt         DateTime?
 
-  pet         Pet?      @relation(fields: [entityId], references: [id])
+  pet               Pet?           @relation(fields: [petId], references: [id])
+  medicalRecord     MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
 
   @@index([entityType, entityId])
+  @@index([petId])
+  @@index([medicalRecordId])
 }
 
 model Appointment {
@@ -491,6 +496,7 @@ model MedicalRecord {
   followUps     FollowUp[]
   soapNote      SoapNote?
   vitalSigns    VitalSignRecord[]
+  attachments   Attachment[]
 
   @@index([customerId])
 }
@@ -1039,6 +1045,14 @@ model StockMovement {
   @@index([warehouseId])
 }
 
+model InvoiceSequence {
+  id         String   @id @default(cuid())
+  yearMonth  String   @unique
+  nextNumber Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 model Invoice {
   id           String        @id @default(cuid())
   invoiceNo    String        @unique
@@ -1204,6 +1218,23 @@ model CashRegisterShift {
   @@index([status])
 }
 
+model HotelRoomType {
+  id           String    @id @default(cuid())
+  name         String
+  description  String?
+  baseRate     Decimal   @db.Decimal(10, 2)
+  capacity     Int       @default(1)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  rooms        HotelRoom[]
+  bookings     HotelBooking[]
+
+  @@index([name])
+}
+
 model HotelRoom {
   id              String    @id @default(cuid())
   roomNo          String    @unique
@@ -1220,6 +1251,7 @@ model HotelRoom {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
+  roomType HotelRoomType? @relation(fields: [roomTypeId], references: [id])
   bookings HotelBooking[]
 
   @@index([status])
@@ -1257,6 +1289,7 @@ model HotelBooking {
   customer      Customer  @relation(fields: [customerId], references: [id])
   pet           Pet?      @relation(fields: [petId], references: [id])
   room          HotelRoom? @relation(fields: [roomId], references: [id])
+  roomType      HotelRoomType? @relation(fields: [roomTypeId], references: [id])
   createdByUser User?     @relation("HotelBookingCreatedByUser", fields: [createdBy], references: [id])
   dailyLogs     HotelDailyLog[]
   inventoryUsages HotelInventoryUsage[]

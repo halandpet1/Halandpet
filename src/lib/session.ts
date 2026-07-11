@@ -114,6 +114,7 @@ export async function setSessionCookie(session: SessionUser) {
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: 60 * 60 * 8,
+    partitioned: process.env.NODE_ENV === 'production',
   });
 }
 
@@ -127,5 +128,6 @@ export async function clearSessionCookie() {
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     expires: new Date(0),
+    partitioned: process.env.NODE_ENV === 'production',
   });
 }

@@ -469,6 +469,8 @@ export async function createAttachment(rawData: unknown): Promise<ActionResult<{
       data: {
         entityType: parsed.data.entityType,
         entityId: petId,
+        petId,
+        medicalRecordId: null,
         fileName: parsed.data.fileName.trim(),
         fileUrl: parsed.data.fileUrl.trim(),
         mimeType: parsed.data.mimeType.trim(),
@@ -501,7 +503,7 @@ export async function updateAttachment(id: string, rawData: unknown): Promise<Ac
   }
 
   const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.attachment.update({ where: { id }, data: { entityType: parsed.data.entityType, entityId: petId, fileName: parsed.data.fileName.trim(), fileUrl: parsed.data.fileUrl.trim(), mimeType: parsed.data.mimeType.trim(), fileSize: parsed.data.fileSize, updatedBy: actor.id } });
+    const updated = await tx.attachment.update({ where: { id }, data: { entityType: parsed.data.entityType, entityId: petId, petId, medicalRecordId: null, fileName: parsed.data.fileName.trim(), fileUrl: parsed.data.fileUrl.trim(), mimeType: parsed.data.mimeType.trim(), fileSize: parsed.data.fileSize, updatedBy: actor.id } });
     await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'Attachment', entityId: updated.id, changes: parsed.data as Prisma.InputJsonValue } });
     return updated;
   });

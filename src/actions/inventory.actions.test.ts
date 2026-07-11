@@ -81,7 +81,7 @@ describe('inventory actions', () => {
     const result = await createGoodsReceipt({ purchaseOrderId: 'po-1', warehouseId: 'wh-1', receivedBy: 'Staff', items: [{ productId: 'missing-product', qty: 5, unitPrice: 100 }] });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Produk tidak ditemukan');
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining('Produk tidak ditemukan') });
   });
 
   it('creates a supplier invoice for a receipt', async () => {
@@ -174,7 +174,7 @@ describe('inventory actions', () => {
     const result = await updateWarehouseTransferStatus({ id: 'tr-2', status: 'APPROVED', notes: 'Approved' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Produk tidak ditemukan');
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining('Produk tidak ditemukan') });
   });
 
   it('approves a stock return and updates inventory', async () => {
@@ -199,6 +199,6 @@ describe('inventory actions', () => {
     const result = await updateStockReturnStatus({ id: 'rt-2', status: 'APPROVED', notes: 'Accepted' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Produk tidak ditemukan');
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining('Produk tidak ditemukan') });
   });
 });

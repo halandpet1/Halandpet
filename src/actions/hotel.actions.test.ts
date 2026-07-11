@@ -94,7 +94,7 @@ describe('hotel actions', () => {
     const result = await createHotelDailyLog({ bookingId: 'missing-booking', notes: 'No booking', feeding: true });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Booking tidak ditemukan');
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining('Booking tidak ditemukan') });
   });
 
   it('deducts inventory usage for hotel services', async () => {
@@ -119,7 +119,7 @@ describe('hotel actions', () => {
     const result = await createHotelInventoryUsage({ bookingId: 'booking-5', productId: 'missing-product', qty: 2, notes: 'Food usage' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Produk tidak ditemukan');
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining('Produk tidak ditemukan') });
   });
 
   it('creates a hotel room and checks availability', async () => {
