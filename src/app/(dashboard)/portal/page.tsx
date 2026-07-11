@@ -3,7 +3,7 @@ import { BellRing, PawPrint, ReceiptText } from 'lucide-react';
 import { getCustomerPortalOverview, getCustomerPortalReminders, listCustomerNotifications } from '@/actions/portal.actions';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency } from '@/lib/utils';
+import CustomerPortalProfileEditor from './customer-portal-profile-editor';
 
 export default async function CustomerPortalPage() {
   const [overviewResult, reminderResult, notificationResult] = await Promise.all([
@@ -141,23 +141,7 @@ export default async function CustomerPortalPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card className="border-slate-800/80 bg-slate-900/70">
-          <CardHeader>
-            <CardTitle>Tagihan</CardTitle>
-            <CardDescription>Riwayat pembayaran dan invoice yang pernah dibuat.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {invoices.map((invoice) => (
-              <div key={invoice.id} className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3">
-                <div>
-                  <p className="font-medium text-white">{invoice.invoiceNo}</p>
-                  <p className="text-sm text-slate-400">{new Date(invoice.createdAt).toLocaleDateString('id-ID')}</p>
-                </div>
-                <span className="text-sm text-slate-300">{formatCurrency(Number(invoice.total))}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <CustomerPortalProfileEditor customer={customer} />
 
         <Card className="border-slate-800/80 bg-slate-900/70">
           <CardHeader>

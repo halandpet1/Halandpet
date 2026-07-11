@@ -1,11 +1,22 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { assignHotelBookingRoom, checkInHotelBooking, checkOutHotelBooking, createHotelBooking, createHotelDailyLog, extendHotelBookingStay, getHotelDashboardSummary, getHotelReportingData, rescheduleHotelBooking, updateHotelRoomStatus } from '@/actions/hotel.actions';
+import { assignHotelBookingRoom, checkInHotelBooking, checkOutHotelBooking, createHotelBooking, createHotelDailyLog, extendHotelBookingStay, getHotelDashboardSummary, getHotelReportingData, listHotelRoomTypes, rescheduleHotelBooking, updateHotelRoomStatus } from '@/actions/hotel.actions';
+import { listCustomers, listPets } from '@/actions/customer.actions';
+
+type CustomerOption = { id: string; name: string };
+type PetOption = { id: string; name: string; customerId: string };
+type HotelRoomTypeOption = { id: string; name: string };
+
+type HotelRoom = { id: string; roomNo: string; status: string; cleaningStatus: string };
 
 export function HotelPageClient() {
   const [bookings, setBookings] = useState<Array<{ id: string; bookingNo: string; status: string; totalAmount: number | null; customerName: string; roomNo: string }>>([]);
   const [dashboard, setDashboard] = useState<{ currentGuests: number; availableRooms: number; cleaningQueue: number; totalBookings: number } | null>(null);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [pets, setPets] = useState<PetOption[]>([]);
+  const [roomTypes, setRoomTypes] = useState<HotelRoomTypeOption[]>([]);
+  const [rooms, setRooms] = useState<HotelRoom[]>([]);
   const [message, setMessage] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [petId, setPetId] = useState('');
@@ -23,14 +34,30 @@ export function HotelPageClient() {
   const [roomStatus, setRoomStatus] = useState('MAINTENANCE');
   const [cleaningStatus, setCleaningStatus] = useState('DIRTY');
 
+  async function loadHotelData() {
+    const [summary, report, customerResult, petResult, roomTypeResult] = await Promise.all([
+      getHotelDashboardSummary(),
+      getHotelReportingData(),
+      listCustomers({ page: 1, pageSize: 200 }),
+      listPets({ page: 1, pageSize: 200 }),
+      listHotelRoomTypes(),
+    ]);
+
+    if (summary.success) setDashboard(summary.data ?? null);
+    if (report.success) {
+      setBookings((report.data?.bookings ?? []).map((item) => ({ id: item.id, bookingNo: item.bookingNo, status: item.status, totalAmount: Number(item.totalAmount ?? 0), customerName: item.customer?.name ?? 'Walk-In', roomNo: item.room?.roomNo ?? '-' })));
+      setRooms(report.data?.rooms ?? []);
+    }
+    if (customerResult.success) setCustomers((customerResult.data?.items ?? []) as CustomerOption[]);
+    if (petResult.success) setPets((petResult.data?.items ?? []) as PetOption[]);
+    if (roomTypeResult.success) setRoomTypes(roomTypeResult.data ?? []);
+  }
+
   useEffect(() => {
-    void (async () => {
-      const [summary, report] = await Promise.all([getHotelDashboardSummary(), getHotelReportingData()]);
-      if (summary.success) setDashboard(summary.data ?? null);
-      if (report.success) {
-        setBookings((report.data?.bookings ?? []).map((item) => ({ id: item.id, bookingNo: item.bookingNo, status: item.status, totalAmount: Number(item.totalAmount ?? 0), customerName: item.customer?.name ?? 'Walk-In', roomNo: item.room?.roomNo ?? '-' })));
-      }
-    })();
+    async function fetchData() {
+      await loadHotelData();
+    }
+    void fetchData();
   }, []);
 
   const totalRevenue = useMemo(() => bookings.reduce((sum, item) => sum + Number(item.totalAmount ?? 0), 0), [bookings]);
@@ -40,6 +67,14 @@ export function HotelPageClient() {
     const result = await createHotelBooking({ customerId, petId, roomTypeId, bookingType, checkInDate, checkOutDate, notes });
     if (result.success) {
       setMessage(`Booking dibuat: ${result.data?.bookingNo}`);
+      setCustomerId('');
+      setPetId('');
+      setRoomTypeId('');
+      setBookingType('BOARDING');
+      setCheckInDate('');
+      setCheckOutDate('');
+      setNotes('');
+      await loadHotelData();
     } else {
       setMessage(result.error ?? 'Gagal membuat booking');
     }
@@ -62,8 +97,13 @@ export function HotelPageClient() {
 
   async function handleRoomStatusUpdate(event: React.FormEvent) {
     event.preventDefault();
+    if (!roomId) {
+      setMessage('Pilih kamar terlebih dahulu');
+      return;
+    }
     const result = await updateHotelRoomStatus({ roomId, status: roomStatus as 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'CLEANING' | 'MAINTENANCE' | 'OUT_OF_SERVICE', cleaningStatus: cleaningStatus as 'CLEAN' | 'DIRTY' | 'IN_PROGRESS' });
     setMessage(result.success ? 'Status kamar diperbarui' : result.error ?? 'Gagal memperbarui status kamar');
+    if (result.success) await loadHotelData();
   }
 
   async function handleAssignRoom(event: React.FormEvent) {
@@ -114,9 +154,33 @@ export function HotelPageClient() {
         <form onSubmit={handleCreateBooking} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Buat Booking</h2>
           <div className="mt-4 space-y-3">
-            <input value={customerId} onChange={(event) => setCustomerId(event.target.value)} placeholder="Customer ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
-            <input value={petId} onChange={(event) => setPetId(event.target.value)} placeholder="Pet ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
-            <input value={roomTypeId} onChange={(event) => setRoomTypeId(event.target.value)} placeholder="Room Type ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <label className="block text-sm">
+              <span className="mb-2 block">Customer</span>
+              <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih customer</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>{customer.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-2 block">Hewan</span>
+              <select value={petId} onChange={(event) => setPetId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih hewan</option>
+                {pets.filter((pet) => pet.customerId === customerId).map((pet) => (
+                  <option key={pet.id} value={pet.id}>{pet.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-2 block">Tipe kamar</span>
+              <select value={roomTypeId} onChange={(event) => setRoomTypeId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih tipe kamar</option>
+                {roomTypes.map((type) => (
+                  <option key={type.id} value={type.id}>{type.name}</option>
+                ))}
+              </select>
+            </label>
             <select value={bookingType} onChange={(event) => setBookingType(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
               <option value="BOARDING">Boarding</option>
               <option value="GROOMING">Grooming</option>
@@ -158,8 +222,24 @@ export function HotelPageClient() {
         <form onSubmit={handleAssignRoom} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Assign Room</h2>
           <div className="mt-4 space-y-3">
-            <input value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} placeholder="Booking ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
-            <input value={assignedRoomId} onChange={(event) => setAssignedRoomId(event.target.value)} placeholder="Room ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <label className="block text-sm">
+              <span className="mb-2 block">Booking</span>
+              <select value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih booking</option>
+                {bookings.map((booking) => (
+                  <option key={booking.id} value={booking.id}>{booking.bookingNo} • {booking.customerName}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-2 block">Room</span>
+              <select value={assignedRoomId} onChange={(event) => setAssignedRoomId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih room</option>
+                {rooms.map((room) => (
+                  <option key={room.id} value={room.id}>{room.roomNo} • {room.status}</option>
+                ))}
+              </select>
+            </label>
           </div>
           <button type="submit" className="mt-4 w-full rounded-lg bg-emerald-600 px-4 py-3 font-semibold">Assign</button>
         </form>
@@ -167,7 +247,15 @@ export function HotelPageClient() {
         <form onSubmit={handleReschedule} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Reschedule</h2>
           <div className="mt-4 space-y-3">
-            <input value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} placeholder="Booking ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <label className="block text-sm">
+              <span className="mb-2 block">Booking</span>
+              <select value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih booking</option>
+                {bookings.map((booking) => (
+                  <option key={booking.id} value={booking.id}>{booking.bookingNo} • {booking.customerName}</option>
+                ))}
+              </select>
+            </label>
             <input type="date" value={rescheduleCheckIn} onChange={(event) => setRescheduleCheckIn(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
             <input type="date" value={rescheduleCheckOut} onChange={(event) => setRescheduleCheckOut(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
           </div>
@@ -177,7 +265,15 @@ export function HotelPageClient() {
         <form onSubmit={handleExtendStay} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Extend Stay</h2>
           <div className="mt-4 space-y-3">
-            <input value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} placeholder="Booking ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+            <label className="block text-sm">
+              <span className="mb-2 block">Booking</span>
+              <select value={selectedBookingId} onChange={(event) => setSelectedBookingId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih booking</option>
+                {bookings.map((booking) => (
+                  <option key={booking.id} value={booking.id}>{booking.bookingNo} • {booking.customerName}</option>
+                ))}
+              </select>
+            </label>
             <input type="number" min="1" value={extensionNights} onChange={(event) => setExtensionNights(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
           </div>
           <button type="submit" className="mt-4 w-full rounded-lg bg-amber-600 px-4 py-3 font-semibold">Extend</button>
@@ -187,7 +283,12 @@ export function HotelPageClient() {
       <form onSubmit={handleRoomStatusUpdate} className="rounded-2xl border border-white/10 bg-slate-900 p-6">
         <h2 className="text-xl font-semibold">Perbarui Status Kamar</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <input value={roomId} onChange={(event) => setRoomId(event.target.value)} placeholder="Room ID" className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <select value={roomId} onChange={(event) => setRoomId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+            <option value="">Pilih kamar</option>
+            {rooms.map((room) => (
+              <option key={room.id} value={room.id}>{room.roomNo} • {room.status}</option>
+            ))}
+          </select>
           <select value={roomStatus} onChange={(event) => setRoomStatus(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
             <option value="AVAILABLE">Available</option>
             <option value="OCCUPIED">Occupied</option>

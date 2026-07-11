@@ -128,6 +128,33 @@ export async function listDoctorSchedules(params?: { doctorId?: string; date?: s
   return { success: true, data: items };
 }
 
+export async function listMedicalRecords(params?: { page?: number; pageSize?: number }) {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(staffViewRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const page = params?.page ?? 1;
+  const pageSize = params?.pageSize ?? 100;
+  const [items] = await Promise.all([
+    db.medicalRecord.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        appointment: {
+          select: {
+            customer: { select: { name: true } },
+            pet: { select: { name: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return { success: true, data: items };
+}
+
 export async function createQueue(rawData: unknown): Promise<ActionResult<{ id: string }>> {
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(queueRoles);

@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
-import { getSessionUser } from '@/lib/session';
-import { parseOrFail, type ActionResult } from '@/lib/action-utils';
+import type { UserRole } from '@prisma/client';
+import { parseOrFail, requireRole, type ActionResult } from '@/lib/action-utils';
 import { z } from 'zod';
 
 const settingsSchema = z.object({
@@ -15,15 +15,8 @@ const settingsSchema = z.object({
   isOpen: z.boolean().optional(),
 });
 
-async function assertRole() {
-  if (!db) return null;
-  const user = await getSessionUser();
-  if (!user) return null;
-  const dbUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true, role: true, isActive: true, deletedAt: true } });
-  if (!dbUser || dbUser.deletedAt || !dbUser.isActive || !['OWNER', 'ADMIN'].includes(dbUser.role)) {
-    return null;
-  }
-  return { id: dbUser.id, role: dbUser.role };
+async function assertRole(allowedRoles: UserRole[] = ['OWNER', 'ADMIN']) {
+  return requireRole(allowedRoles);
 }
 
 export async function getSystemSettings(): Promise<ActionResult<{ settings: Record<string, unknown>; summary: { revenue: number; customers: number; products: number; bookings: number; appointments: number } }>> {
@@ -75,6 +68,20 @@ export async function upsertSystemSettings(rawData: unknown): Promise<ActionResu
   revalidatePath('/dashboard');
   revalidatePath('/reports');
   return { success: true, data: { id: current?.id ?? 'new' } };
+}
+
+export async function listDoctors() {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF']);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const doctors = await db.user.findMany({
+    where: { deletedAt: null, isActive: true, role: 'DOCTOR' },
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, username: true },
+  });
+
+  return { success: true, data: doctors };
 }
 
 export async function getAdministrationOverview(): Promise<ActionResult<{ users: Array<{ id: string; username: string; fullName: string; role: string; isActive: boolean }>; auditLogs: Array<{ id: string; action: string; entity: string; createdAt: Date }> }>> {

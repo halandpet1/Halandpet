@@ -2,8 +2,7 @@
 
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
-import { getSessionUser } from '@/lib/session';
-import { parseOrFail } from '@/lib/action-utils';
+import { parseOrFail, requireSessionUser, type ActionResult } from '@/lib/action-utils';
 import { z } from 'zod';
 
 type CustomerPortalCustomer = {
@@ -85,7 +84,7 @@ const profileSchema = z.object({
 async function getPortalCustomerContext() {
   if (!db) return null;
 
-  const user = await getSessionUser();
+  const user = await requireSessionUser();
   if (!user) return null;
 
   const customer = await db.customer.findFirst({
@@ -238,7 +237,7 @@ export async function listCustomerNotifications(): Promise<CustomerPortalNotific
   return { success: true, data: { items } };
 }
 
-export async function markCustomerNotificationRead(id: string) {
+export async function markCustomerNotificationRead(id: string): Promise<ActionResult<{ id: string }>> {
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
 
   const context = await getPortalCustomerContext();
@@ -246,7 +245,12 @@ export async function markCustomerNotificationRead(id: string) {
     return { success: false, error: 'Akses portal pelanggan tidak tersedia' };
   }
 
-  const updated = await db.notification.update({ where: { id }, data: { isRead: true } });
+  const notification = await db.notification.findFirst({ where: { id, userId: context.user.id } });
+  if (!notification) {
+    return { success: false, error: 'Notifikasi tidak ditemukan atau akses ditolak' };
+  }
+
+  const updated = await db.notification.update({ where: { id: notification.id }, data: { isRead: true } });
   await db.auditLog.create({ data: { userId: context.user.id, action: 'UPDATE', entity: 'Notification', entityId: updated.id, changes: { isRead: true } as Prisma.InputJsonValue } });
   return { success: true, data: { id: updated.id } };
 }

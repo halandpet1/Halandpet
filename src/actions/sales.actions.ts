@@ -4,24 +4,14 @@ import type { Prisma, UserRole, InvoiceStatus, PaymentMethod } from '@prisma/cli
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { getSessionUser } from '@/lib/session';
-import { parseOrFail, type ActionResult } from '@/lib/action-utils';
+import { parseOrFail, requireRole, type ActionResult } from '@/lib/action-utils';
 import { invoiceBillingSchema, posCheckoutSchema, voidInvoiceSchema } from '@/validators/sales.schema';
 import { allocateFefoBatches } from '@/lib/inventory-utils';
 
 const salesRoles: UserRole[] = ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'];
 
 async function assertRole(allowedRoles: UserRole[]) {
-  if (!db) return null;
-  const user = await getSessionUser();
-  if (!user) return null;
-
-  const dbUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true, role: true, isActive: true, deletedAt: true } });
-  if (!dbUser || dbUser.deletedAt || !dbUser.isActive || !allowedRoles.includes(dbUser.role)) {
-    return null;
-  }
-
-  return { id: dbUser.id, role: dbUser.role, fullName: user.fullName };
+  return requireRole(allowedRoles);
 }
 
 async function createInvoiceNumber(tx: Prisma.TransactionClient) {

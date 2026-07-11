@@ -5,7 +5,7 @@ describe('development auth fallback', () => {
   beforeEach(() => {
     resetDevelopmentSeedForTests();
     delete process.env.DATABASE_URL;
-    process.env.NODE_ENV = 'development';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
   });
 
   it('creates a fallback owner for local development when no database is configured', async () => {

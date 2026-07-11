@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { createAppointment, createMedicalRecord, listAppointments } from '@/actions/clinical.actions';
 import { listCustomers, listPets } from '@/actions/customer.actions';
+import { listDoctors } from '@/actions/enterprise.actions';
 
 type CustomerOption = { id: string; name: string };
 type PetOption = { id: string; name: string; customerId: string };
+type DoctorOption = { id: string; fullName: string };
 type AppointmentItem = {
   id: string;
   appointmentDate: string | Date;
@@ -19,6 +21,7 @@ type AppointmentItem = {
 export function ClinicalPageClient() {
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [pets, setPets] = useState<PetOption[]>([]);
+  const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [customerId, setCustomerId] = useState('');
   const [petId, setPetId] = useState('');
@@ -35,9 +38,10 @@ export function ClinicalPageClient() {
 
   useEffect(() => {
     void (async () => {
-      const [customerResult, petResult, appointmentResult] = await Promise.all([
+      const [customerResult, petResult, doctorResult, appointmentResult] = await Promise.all([
         listCustomers({ page: 1, pageSize: 200 }),
         listPets({ page: 1, pageSize: 200 }),
+        listDoctors(),
         listAppointments({ page: 1, pageSize: 50 }),
       ]);
 
@@ -46,6 +50,9 @@ export function ClinicalPageClient() {
       }
       if (petResult.success) {
         setPets((petResult.data?.items ?? []) as PetOption[]);
+      }
+      if (doctorResult.success) {
+        setDoctors(doctorResult.data ?? []);
       }
       if (appointmentResult.success) {
         setAppointments((appointmentResult.data?.items ?? []) as AppointmentItem[]);
@@ -135,7 +142,12 @@ export function ClinicalPageClient() {
             </label>
             <label className="block text-sm">
               <span className="mb-2 block">Dokter</span>
-              <input value={doctorId} onChange={(event) => setDoctorId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID dokter" />
+              <select value={doctorId} onChange={(event) => setDoctorId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Pilih dokter</option>
+                {doctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>{doctor.fullName}</option>
+                ))}
+              </select>
             </label>
             <label className="block text-sm">
               <span className="mb-2 block">Tanggal janji</span>

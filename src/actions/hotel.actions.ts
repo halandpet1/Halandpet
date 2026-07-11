@@ -3,24 +3,14 @@
 import type { Prisma, PaymentMethod, UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
-import { getSessionUser } from '@/lib/session';
-import { parseOrFail, type ActionResult } from '@/lib/action-utils';
+import { parseOrFail, requireRole, type ActionResult } from '@/lib/action-utils';
 import { createHotelBookingSchema, hotelAssignRoomSchema, hotelAvailabilitySchema, hotelBookingUpdateSchema, hotelCheckInSchema, hotelCheckOutSchema, hotelDailyLogSchema, hotelInventoryUsageSchema, hotelRescheduleSchema, hotelRoomSchema, hotelRoomStatusSchema, hotelStayExtensionSchema } from '@/validators/hotel.schema';
 import { allocateFefoBatches } from '@/lib/inventory-utils';
 
 const hotelRoles: UserRole[] = ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'];
 
 async function assertRole(allowedRoles: UserRole[]) {
-  if (!db) return null;
-  const user = await getSessionUser();
-  if (!user) return null;
-
-  const dbUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true, role: true, isActive: true, deletedAt: true } });
-  if (!dbUser || dbUser.deletedAt || !dbUser.isActive || !allowedRoles.includes(dbUser.role)) {
-    return null;
-  }
-
-  return { id: dbUser.id, role: dbUser.role, fullName: user.fullName };
+  return requireRole(allowedRoles);
 }
 
 function createBookingNumber() {
@@ -447,4 +437,17 @@ export async function getHotelReportingData() {
 
   const rooms = await db.hotelRoom.findMany({ where: { deletedAt: null }, select: { id: true, roomNo: true, status: true, cleaningStatus: true } });
   return { success: true, data: { bookings, rooms } };
+}
+
+export async function listHotelRoomTypes() {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(hotelRoles);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const roomTypes = await db.hotelRoomType.findMany({
+    where: { deletedAt: null, isActive: true },
+    orderBy: { name: 'asc' },
+  });
+
+  return { success: true, data: roomTypes };
 }

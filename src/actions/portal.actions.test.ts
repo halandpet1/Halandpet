@@ -7,7 +7,7 @@ const dbMock = vi.hoisted(() => ({
   invoice: { findMany: vi.fn() },
   hotelBooking: { findMany: vi.fn() },
   vaccinationRecord: { findMany: vi.fn() },
-  notification: { findMany: vi.fn(), update: vi.fn(), create: vi.fn() },
+  notification: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
   user: { findMany: vi.fn() },
   customerMembership: { findUnique: vi.fn() },
   loyaltyPointLedger: { findMany: vi.fn() },
@@ -21,7 +21,7 @@ const getSessionUserMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/session', () => ({ getSessionUser: getSessionUserMock }));
 
-import { getCustomerPortalOverview, getCustomerPortalReminders, listCustomerNotifications } from './portal.actions';
+import { getCustomerPortalOverview, getCustomerPortalReminders, listCustomerNotifications, markCustomerNotificationRead } from './portal.actions';
 
 describe('getCustomerPortalOverview', () => {
   beforeEach(() => {
@@ -71,5 +71,35 @@ describe('getCustomerPortalOverview', () => {
     }
 
     expect(notificationsResult.data.items).toHaveLength(1);
+  });
+
+  it('prevents customers from marking notifications they do not own as read', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER', fullName: 'Mina' });
+    dbMock.customer.findFirst.mockResolvedValue({ id: 'cust-1', name: 'Mina' });
+    dbMock.notification.findFirst.mockResolvedValue(null);
+
+    const result = await markCustomerNotificationRead('notif-unauthorized');
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      throw new Error('Expected unauthorized update to fail');
+    }
+    expect(result.error).toBe('Notifikasi tidak ditemukan atau akses ditolak');
+  });
+
+  it('marks a customer notification read only when it belongs to them', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER', fullName: 'Mina' });
+    dbMock.customer.findFirst.mockResolvedValue({ id: 'cust-1', name: 'Mina' });
+    dbMock.notification.findFirst.mockResolvedValue({ id: 'notif-1', userId: 'user-1', isRead: false });
+    dbMock.notification.update.mockResolvedValue({ id: 'notif-1' });
+
+    const result = await markCustomerNotificationRead('notif-1');
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    expect(result.data?.id).toBe('notif-1');
+    expect(dbMock.notification.update).toHaveBeenCalledWith({ where: { id: 'notif-1' }, data: { isRead: true } });
   });
 });

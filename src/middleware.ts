@@ -4,15 +4,21 @@ import { getSessionUser } from '@/lib/session';
 
 const publicPaths = ['/login', '/api/auth/login', '/api/health', '/api/live', '/api/ready', '/api/seed'];
 
-const roleAccess: Record<string, Array<'OWNER' | 'ADMIN' | 'DOCTOR' | 'CASHIER' | 'STAFF' | 'CUSTOMER'>> = {
-  '/admin': ['OWNER', 'ADMIN'],
-  '/inventory': ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'],
-  '/pos': ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'],
-  '/hotel': ['OWNER', 'ADMIN', 'STAFF'],
-  '/clinical': ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'],
-  '/reports': ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'],
-  '/portal': ['OWNER', 'ADMIN', 'CUSTOMER'],
-};
+type RouteRole = 'OWNER' | 'ADMIN' | 'DOCTOR' | 'CASHIER' | 'STAFF' | 'CUSTOMER';
+const roleAccess: Array<[string, RouteRole[]]> = [
+  ['/dashboard/admin', ['OWNER', 'ADMIN']],
+  ['/dashboard/inventory', ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF']],
+  ['/dashboard/pos', ['OWNER', 'ADMIN', 'CASHIER', 'STAFF']],
+  ['/dashboard/hotel', ['OWNER', 'ADMIN', 'CASHIER', 'STAFF']],
+  ['/dashboard/clinical', ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF']],
+  ['/dashboard/reports', ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF']],
+  ['/dashboard/settings', ['OWNER', 'ADMIN']],
+  ['/dashboard/monitoring', ['OWNER', 'ADMIN']],
+  ['/dashboard/customers', ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF']],
+  ['/dashboard/pets', ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF']],
+  ['/dashboard', ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF']],
+  ['/portal', ['CUSTOMER']],
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

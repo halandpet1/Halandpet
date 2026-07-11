@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createDoctorSchedule, createQueue, createSoapNote, createVitalSign, listDoctorSchedules, listQueues, updateQueueStatus } from '@/actions/clinical-slice2.actions';
+import { createDoctorSchedule, createQueue, createSoapNote, createVitalSign, listDoctorSchedules, listMedicalRecords, listQueues, updateQueueStatus } from '@/actions/clinical-slice2.actions';
 import { createDiagnosis, createFollowUp, createPrescription, createTreatmentPlan } from '@/actions/clinical-slice3.actions';
 import { listAppointments } from '@/actions/clinical.actions';
+import { listDoctors } from '@/actions/enterprise.actions';
 
 type AppointmentItem = { id: string; appointmentDate: string | Date; status: string; customer: { id: string; name: string }; pet: { id: string; name: string } };
 type QueueItem = { id: string; queueNo: number; status: string; estimatedWaitingMinutes?: number | null; appointment: { customer: { name: string }; pet: { name: string } } };
+type DoctorItem = { id: string; fullName: string; username: string };
+type MedicalRecordItem = { id: string; appointment: { customer: { name: string }; pet: { name: string } } };
 
 export function ClinicalSlice2Client() {
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
@@ -20,6 +23,8 @@ export function ClinicalSlice2Client() {
   const [queueDate, setQueueDate] = useState('');
   const [queueNo, setQueueNo] = useState(1);
   const [estimatedWaitingMinutes, setEstimatedWaitingMinutes] = useState(15);
+  const [doctors, setDoctors] = useState<DoctorItem[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecordItem[]>([]);
   const [medicalRecordId, setMedicalRecordId] = useState('');
   const [subjective, setSubjective] = useState('');
   const [objective, setObjective] = useState('');
@@ -62,25 +67,38 @@ export function ClinicalSlice2Client() {
 
   useEffect(() => {
     void (async () => {
-      const [appointmentResult, queueResult, scheduleResult] = await Promise.all([
+      const [appointmentResult, queueResult, scheduleResult, doctorsResult, recordsResult] = await Promise.all([
         listAppointments({ page: 1, pageSize: 100 }),
         listQueues({ date: new Date().toISOString().slice(0, 10) }),
         listDoctorSchedules({ date: new Date().toISOString().slice(0, 10) }),
+        listDoctors(),
+        listMedicalRecords({ page: 1, pageSize: 200 }),
       ]);
 
       if (appointmentResult.success) setAppointments((appointmentResult.data?.items ?? []) as AppointmentItem[]);
       if (queueResult.success) setQueues((queueResult.data ?? []) as QueueItem[]);
+      if (doctorsResult.success) {
+        setDoctors(doctorsResult.data ?? []);
+        if (!doctorId && doctorsResult.data?.[0]) {
+          setDoctorId(doctorsResult.data[0].id);
+        }
+      }
       if (scheduleResult.success) {
         const schedules = scheduleResult.data as Array<{ doctorId: string; scheduleDate: string | Date; startTime: string; endTime: string }>;
-        if (schedules[0]) {
-          setDoctorId(schedules[0].doctorId);
+        if (schedules[0] && !scheduleDate) {
           setScheduleDate(new Date(schedules[0].scheduleDate).toISOString().slice(0, 10));
           setStartTime(schedules[0].startTime);
           setEndTime(schedules[0].endTime);
         }
       }
+      if (recordsResult.success) {
+        setMedicalRecords(recordsResult.data ?? []);
+        if (!medicalRecordId && recordsResult.data?.[0]) {
+          setMedicalRecordId(recordsResult.data[0].id);
+        }
+      }
     })();
-  }, []);
+  }, [doctorId, medicalRecordId, scheduleDate]);
 
   async function handleScheduleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -210,7 +228,12 @@ export function ClinicalSlice2Client() {
           <h2 className="text-xl font-semibold">Jadwal dokter</h2>
           <label className="block text-sm">
             <span className="mb-2 block">Dokter</span>
-            <input value={doctorId} onChange={(event) => setDoctorId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID dokter" />
+            <select value={doctorId} onChange={(event) => setDoctorId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+              <option value="">Pilih dokter</option>
+              {doctors.map((doctor) => (
+                <option key={doctor.id} value={doctor.id}>{doctor.fullName} ({doctor.username})</option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm">
             <span className="mb-2 block">Tanggal</span>
@@ -266,8 +289,13 @@ export function ClinicalSlice2Client() {
         <form onSubmit={handleSoapSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">SOAP Notes</h2>
           <label className="block text-sm">
-            <span className="mb-2 block">Medical Record ID</span>
-            <input value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID rekam medis" />
+            <span className="mb-2 block">Medical Record</span>
+            <select value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+              <option value="">Pilih rekam medis</option>
+              {medicalRecords.map((record) => (
+                <option key={record.id} value={record.id}>{record.appointment.customer.name} - {record.appointment.pet.name} ({record.id})</option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm">
             <span className="mb-2 block">Subjective</span>
@@ -291,8 +319,13 @@ export function ClinicalSlice2Client() {
         <form onSubmit={handleVitalSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Vital Signs</h2>
           <label className="block text-sm">
-            <span className="mb-2 block">Medical Record ID</span>
-            <input value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID rekam medis" />
+            <span className="mb-2 block">Medical Record</span>
+            <select value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+              <option value="">Pilih rekam medis</option>
+              {medicalRecords.map((record) => (
+                <option key={record.id} value={record.id}>{record.appointment.customer.name} - {record.appointment.pet.name} ({record.id})</option>
+              ))}
+            </select>
           </label>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm">
@@ -332,8 +365,13 @@ export function ClinicalSlice2Client() {
         <form onSubmit={handleDiagnosisSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Diagnosis</h2>
           <label className="block text-sm">
-            <span className="mb-2 block">Medical Record ID</span>
-            <input value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID rekam medis" />
+            <span className="mb-2 block">Medical Record</span>
+            <select value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+              <option value="">Pilih rekam medis</option>
+              {medicalRecords.map((record) => (
+                <option key={record.id} value={record.id}>{record.appointment.customer.name} - {record.appointment.pet.name} ({record.id})</option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm">
             <span className="mb-2 block">Primary diagnosis</span>
@@ -361,8 +399,13 @@ export function ClinicalSlice2Client() {
         <form onSubmit={handleTreatmentSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Treatment Plan</h2>
           <label className="block text-sm">
-            <span className="mb-2 block">Medical Record ID</span>
-            <input value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID rekam medis" />
+            <span className="mb-2 block">Medical Record</span>
+            <select value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+              <option value="">Pilih rekam medis</option>
+              {medicalRecords.map((record) => (
+                <option key={record.id} value={record.id}>{record.appointment.customer.name} - {record.appointment.pet.name} ({record.id})</option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm">
             <span className="mb-2 block">Medical treatment</span>
@@ -392,8 +435,13 @@ export function ClinicalSlice2Client() {
         <form onSubmit={handlePrescriptionSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Prescription</h2>
           <label className="block text-sm">
-            <span className="mb-2 block">Medical Record ID</span>
-            <input value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID rekam medis" />
+            <span className="mb-2 block">Medical Record</span>
+            <select value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+              <option value="">Pilih rekam medis</option>
+              {medicalRecords.map((record) => (
+                <option key={record.id} value={record.id}>{record.appointment.customer.name} - {record.appointment.pet.name} ({record.id})</option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm">
             <span className="mb-2 block">Diagnosis ID</span>
@@ -451,8 +499,13 @@ export function ClinicalSlice2Client() {
         <form onSubmit={handleFollowUpSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-slate-900 p-6">
           <h2 className="text-xl font-semibold">Follow Up</h2>
           <label className="block text-sm">
-            <span className="mb-2 block">Medical Record ID</span>
-            <input value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="ID rekam medis" />
+            <span className="mb-2 block">Medical Record</span>
+            <select value={medicalRecordId} onChange={(event) => setMedicalRecordId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+              <option value="">Pilih rekam medis</option>
+              {medicalRecords.map((record) => (
+                <option key={record.id} value={record.id}>{record.appointment.customer.name} - {record.appointment.pet.name} ({record.id})</option>
+              ))}
+            </select>
           </label>
           <label className="block text-sm">
             <span className="mb-2 block">Next visit</span>

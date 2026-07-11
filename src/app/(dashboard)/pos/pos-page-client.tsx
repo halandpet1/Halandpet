@@ -3,10 +3,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPosCheckout, getCustomerMembership, getSalesReportSummary, listSalesTransactions, validateVoucher, upsertCustomerMembership, openCashRegister, closeCashRegister } from '@/actions/sales.actions';
 import { listProducts } from '@/actions/inventory.actions';
+import { listCustomers } from '@/actions/customer.actions';
+
+type CustomerOption = { id: string; name: string };
+type SalesTransaction = { id: string; invoiceNo: string; status: string; total: number; createdAt: Date | null };
+
+type ProductItem = { id: string; sku: string; name: string; currentQty: number; sellingPrice?: number | null };
+
+type CartItem = { productId: string; name: string; qty: number; unitPrice: number };
 
 export function PosPageClient() {
-  const [products, setProducts] = useState<Array<{ id: string; sku: string; name: string; currentQty: number; sellingPrice?: number | null }>>([]);
-  const [cart, setCart] = useState<Array<{ productId: string; name: string; qty: number; unitPrice: number }>>([]);
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [customerId, setCustomerId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'DEBIT' | 'QRIS' | 'TRANSFER'>('CASH');
   const [discount, setDiscount] = useState('0');
@@ -18,21 +27,28 @@ export function PosPageClient() {
   const [taxRate, setTaxRate] = useState('0');
   const [serviceFee, setServiceFee] = useState('0');
   const [metrics, setMetrics] = useState<{ today: { revenue: number; transactions: number; outstanding: number }; week: { revenue: number; transactions: number; outstanding: number }; month: { revenue: number; transactions: number; outstanding: number } } | null>(null);
-  const [transactions, setTransactions] = useState<Array<{ id: string; invoiceNo: string; status: string; total: number; createdAt: Date | null }>>([]);
+  const [transactions, setTransactions] = useState<SalesTransaction[]>([]);
   const [cashRegisterStatus, setCashRegisterStatus] = useState<'OPEN' | 'CLOSED' | null>(null);
   const [activeShiftId, setActiveShiftId] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
-      const result = await listProducts({ page: 1, pageSize: 20 });
-      if (result.success) {
-        setProducts(result.data?.items ?? []);
+      const [productResult, customerResult, sales, summary] = await Promise.all([
+        listProducts({ page: 1, pageSize: 20 }),
+        listCustomers({ page: 1, pageSize: 200 }),
+        listSalesTransactions(),
+        getSalesReportSummary(),
+      ]);
+      if (productResult.success) {
+        setProducts(productResult.data?.items ?? []);
       }
-      const sales = await listSalesTransactions();
+      if (customerResult.success) {
+        setCustomers((customerResult.data?.items ?? []) as CustomerOption[]);
+      }
       if (sales.success) {
-        setTransactions((sales.data?.items ?? []).map((item) => ({ id: item.id, invoiceNo: item.invoiceNo, status: item.status, total: Number(item.total ?? 0), createdAt: item.createdAt }))); 
+        const salesItems = (sales.data?.items ?? []) as unknown as Array<{ id: string; invoiceNo: string; status: string; total: number | null; createdAt: Date | null }>;
+        setTransactions(salesItems.map((item) => ({ id: item.id, invoiceNo: item.invoiceNo, status: String(item.status), total: Number(item.total ?? 0), createdAt: item.createdAt })));
       }
-      const summary = await getSalesReportSummary();
       if (summary.success) {
         setMetrics(summary.data ?? null);
       }
@@ -132,7 +148,8 @@ export function PosPageClient() {
       setCustomerId('');
       const sales = await listSalesTransactions();
       if (sales.success) {
-        setTransactions((sales.data?.items ?? []).map((item) => ({ id: item.id, invoiceNo: item.invoiceNo, status: item.status, total: Number(item.total ?? 0), createdAt: item.createdAt })));
+        const salesItems = (sales.data?.items ?? []) as unknown as Array<{ id: string; invoiceNo: string; status: string; total: number | null; createdAt: Date | null }>;
+        setTransactions(salesItems.map((item) => ({ id: item.id, invoiceNo: item.invoiceNo, status: String(item.status), total: Number(item.total ?? 0), createdAt: item.createdAt })));
       }
     } else {
       setMessage(result.error);
@@ -184,7 +201,12 @@ export function PosPageClient() {
           <div className="mt-6 space-y-3">
             <label className="block text-sm">
               <span className="mb-2 block">Customer</span>
-              <input value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="Customer ID / Walk-In" />
+              <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+                <option value="">Walk-in / Guest</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>{customer.name}</option>
+                ))}
+              </select>
             </label>
             <label className="block text-sm">
               <span className="mb-2 block">Metode pembayaran</span>
@@ -210,7 +232,6 @@ export function PosPageClient() {
             <label className="block text-sm">
               <span className="mb-2 block">Membership</span>
               <div className="flex gap-2">
-                <input value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="flex-1 rounded-lg border border-white/10 bg-slate-950 px-3 py-2" placeholder="Customer ID" />
                 <button type="button" onClick={handleMembershipSync} className="rounded-lg bg-slate-800 px-3 py-2">Sync</button>
               </div>
               {membershipInfo ? <p className="mt-2 text-xs text-slate-400">{membershipInfo.tier} • {membershipInfo.points} poin • {membershipInfo.discountPercent}% diskon</p> : null}

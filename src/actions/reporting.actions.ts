@@ -1,8 +1,8 @@
 'use server';
 
 import { db } from '@/lib/db';
-import { getSessionUser } from '@/lib/session';
-import { parseOrFail, type ActionResult } from '@/lib/action-utils';
+import type { UserRole } from '@prisma/client';
+import { parseOrFail, requireRole, type ActionResult } from '@/lib/action-utils';
 import { z } from 'zod';
 
 const reportRangeSchema = z.object({
@@ -18,14 +18,7 @@ type ReportRange = {
 };
 
 async function assertRole() {
-  if (!db) return null;
-  const user = await getSessionUser();
-  if (!user) return null;
-  const dbUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true, role: true, isActive: true, deletedAt: true } });
-  if (!dbUser || dbUser.deletedAt || !dbUser.isActive || !['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'].includes(dbUser.role)) {
-    return null;
-  }
-  return { id: dbUser.id, role: dbUser.role };
+  return requireRole(['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF']);
 }
 
 function buildDateRange(range: ReportRange) {

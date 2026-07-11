@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { createPet, listPets, listSpecies, softDeletePet } from '@/actions/customer.actions';
+import { createPet, listCustomers, listPets, listSpecies, softDeletePet } from '@/actions/customer.actions';
 
 type PetItem = {
   id: string;
@@ -24,6 +24,7 @@ export function PetManagementClient() {
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [customers, setCustomers] = useState<Array<{ id: string; name: string }>>([]);
   const [customerId, setCustomerId] = useState('');
   const [name, setName] = useState('');
   const [speciesId, setSpeciesId] = useState('');
@@ -33,14 +34,20 @@ export function PetManagementClient() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [speciesResult, petsResult] = await Promise.all([listSpecies(), listPets({ search, page, pageSize })]);
+    const [speciesResult, petsResult, customersResult] = await Promise.all([listSpecies(), listPets({ search, page, pageSize }), listCustomers({ page: 1, pageSize: 200 })]);
     if (speciesResult.success) setSpecies((speciesResult.data ?? []) as SpeciesItem[]);
+    if (customersResult.success) {
+      setCustomers(customersResult.data?.items ?? []);
+      if (!customerId && customersResult.data?.items?.[0]) {
+        setCustomerId(customersResult.data.items[0].id);
+      }
+    }
     if (petsResult.success) {
       setPets((petsResult.data?.items ?? []) as PetItem[]);
       setTotal(petsResult.data?.total ?? 0);
     }
     setLoading(false);
-  }, [page, pageSize, search]);
+  }, [customerId, page, pageSize, search]);
 
   useEffect(() => {
     void (async () => {
@@ -82,8 +89,13 @@ export function PetManagementClient() {
 
       <form onSubmit={handleCreate} className="grid gap-4 rounded-2xl border border-white/10 bg-slate-900 p-6 md:grid-cols-2">
         <label className="block text-sm" htmlFor="pet-customer-id">
-          <span className="mb-2 block">Customer ID</span>
-          <input id="pet-customer-id" name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)} aria-invalid={Boolean(fieldErrors.customerId?.length)} aria-describedby={fieldErrors.customerId?.length ? 'pet-customer-id-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2" />
+          <span className="mb-2 block">Customer</span>
+          <select id="pet-customer-id" name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)} aria-invalid={Boolean(fieldErrors.customerId?.length)} aria-describedby={fieldErrors.customerId?.length ? 'pet-customer-id-error' : undefined} className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2">
+            <option value="">Pilih customer</option>
+            {customers.map((customer) => (
+              <option key={customer.id} value={customer.id}>{customer.name}</option>
+            ))}
+          </select>
           {fieldErrors.customerId ? <span id="pet-customer-id-error" className="mt-2 block text-xs text-rose-400">{fieldErrors.customerId[0]}</span> : null}
         </label>
         <label className="block text-sm" htmlFor="pet-name">
