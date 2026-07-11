@@ -30,7 +30,7 @@ function createInvoiceNumber() {
   return `INV-${yearMonth}-${String(Date.now()).slice(-5)}`;
 }
 
-export async function createPosCheckout(rawData: unknown): Promise<ActionResult<{ id: string; invoiceNo: string }>> {
+export async function createPosCheckout(rawData: unknown): Promise<ActionResult<{ id: string; invoiceNo: string; receiptNo: string | null }>> {
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(salesRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
@@ -38,97 +38,106 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
   const parsed = await parseOrFail(posCheckoutSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const invoiceTotal = parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0) - parsed.data.discount;
     const invoice = await tx.invoice.create({
       data: {
         invoiceNo: createInvoiceNumber(),
         customerId: parsed.data.customerId || 'cl-walk-in',
-        status: 'PENDING',
+        status: parsed.data.amountPaid > 0 ? 'PARTIAL' : 'PENDING',
         source: 'POS',
         subtotal: parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0),
         tax: 0,
         discount: parsed.data.discount,
-        total: parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0) - parsed.data.discount,
-        paidAmount: 0,
-        notes: parsed.data.notes || null,
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
-    });
-
-    for (const item of parsed.data.items) {
-      const product = await tx.product.findUnique({ where: { id: item.productId }, select: { id: true, name: true, requiresBatch: true, currentQty: true, sellingPrice: true } });
-      if (!product) {
-        throw new Error(`Produk ${item.productId} tidak ditemukan`);
-      }
-
-      await tx.invoiceItem.create({
-        data: {
-          invoiceId: invoice.id,
-          productId: product.id,
-          description: product.name,
-          qty: item.qty,
-          unitPrice: item.unitPrice,
-          total: item.qty * item.unitPrice,
-        },
-      });
-
-      if (product.requiresBatch) {
-        const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null }, select: { id: true, currentQty: true, expiryDate: true } });
-        const batch = selectFefoBatch(batches, item.qty);
-        if (!batch) {
-          throw new Error(`Stok batch tidak tersedia untuk ${product.name}`);
-        }
-        await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - item.qty } });
-      } else {
-        await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: item.qty } } });
-      }
-
-      await tx.stockMovement.create({
-        data: {
-          productId: product.id,
-          batchId: null,
-          warehouseId: null,
-          type: 'OUT',
-          refType: 'SALES',
-          refId: invoice.id,
-          qty: -item.qty,
-          balanceAfter: Math.max(0, product.currentQty - item.qty),
-          notes: 'POS checkout',
+        total: invoiceTotal,
+          notes: parsed.data.notes || null,
           createdBy: actor.id,
+          updatedBy: actor.id,
         },
       });
-    }
+
+      for (const item of parsed.data.items) {
+        const product = await tx.product.findUnique({ where: { id: item.productId }, select: { id: true, name: true, requiresBatch: true, currentQty: true, sellingPrice: true } });
+        if (!product) {
+          throw new Error(`Produk ${item.productId} tidak ditemukan`);
+        }
+
+        await tx.invoiceItem.create({
+          data: {
+            invoiceId: invoice.id,
+            productId: product.id,
+            description: product.name,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            total: item.qty * item.unitPrice,
+          },
+        });
+
+        if (product.requiresBatch) {
+          const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null }, select: { id: true, currentQty: true, expiryDate: true } });
+          const batch = selectFefoBatch(batches, item.qty);
+          if (!batch) {
+            throw new Error(`Stok batch tidak tersedia untuk ${product.name}`);
+          }
+          await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - item.qty } });
+        } else {
+          await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: item.qty } } });
+        }
+
+        await tx.stockMovement.create({
+          data: {
+            productId: product.id,
+            batchId: null,
+            warehouseId: null,
+            type: 'OUT',
+            refType: 'SALES',
+            refId: invoice.id,
+            qty: -item.qty,
+            balanceAfter: Math.max(0, product.currentQty - item.qty),
+            notes: 'POS checkout',
+            createdBy: actor.id,
+          },
+        });
+      }
+
+const paymentAmount = Math.min(parsed.data.amountPaid, Number(invoiceTotal));
+    const receiptNo = paymentAmount > 0 ? `RCP-${String(Date.now()).slice(-4)}` : null;
 
     await tx.payment.create({
       data: {
         invoiceId: invoice.id,
         method: parsed.data.paymentMethod as PaymentMethod,
-        amount: Math.min(parsed.data.amountPaid, Number(invoice.total)),
+        amount: paymentAmount,
         referenceNo: null,
         status: 'SUCCESS',
         createdBy: actor.id,
       },
     });
 
+    const nextStatus = paymentAmount >= Number(invoiceTotal) ? 'PAID' : 'PARTIAL';
     await tx.invoice.update({
       where: { id: invoice.id },
       data: {
-        status: 'PAID',
-        paidAmount: Math.min(parsed.data.amountPaid, Number(invoice.total)),
+        status: nextStatus,
+        paidAmount: paymentAmount,
+        receiptNo: receiptNo ?? undefined,
       },
     });
 
     await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Invoice', entityId: invoice.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return invoice;
-  });
+    return { ...invoice, receiptNo };
+    });
 
-  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
-    revalidatePath('/pos');
-    revalidatePath('/dashboard');
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+      revalidatePath('/pos');
+      revalidatePath('/dashboard');
+    }
+
+    return { success: true, data: { id: result.id, invoiceNo: result.invoiceNo, receiptNo: result.receiptNo ?? null } };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal membuat checkout POS' };
   }
-
-  return { success: true, data: { id: result.id, invoiceNo: result.invoiceNo } };
 }
 
 export async function updateInvoiceBilling(rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -423,6 +432,7 @@ export async function getReceiptData(invoiceId: string) {
     select: {
       id: true,
       invoiceNo: true,
+      receiptNo: true,
       status: true,
       subtotal: true,
       tax: true,
@@ -443,6 +453,7 @@ export async function getReceiptData(invoiceId: string) {
     success: true,
     data: {
       invoiceNo: invoice.invoiceNo,
+      receiptNo: invoice.receiptNo ?? null,
       customer: invoice.customer,
       status: invoice.status,
       createdAt: invoice.createdAt,

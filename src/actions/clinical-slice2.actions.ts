@@ -352,8 +352,9 @@ export async function getClinicalTimeline(medicalRecordId: string) {
   const appointmentResult = await db.appointment.findFirst({ where: { id: medicalRecord.appointmentId, deletedAt: null }, select: { id: true, appointmentDate: true, status: true, customer: { select: { id: true, name: true } }, pet: { select: { id: true, name: true } } } });
   if (!appointmentResult) return { success: false, error: 'Janji temu tidak ditemukan' };
 
-  const [diagnosis, soapNote, vitalSigns, attachments, prescriptions, vaccinations, weights, allergies, diseases] = await Promise.all([
+  const [diagnosis, treatmentPlan, soapNote, vitalSigns, attachments, prescriptions, vaccinations, weights, allergies, diseases] = await Promise.all([
     db.diagnosis.findFirst({ where: { medicalRecordId, deletedAt: null }, select: { id: true, primaryDiagnosis: true, clinicalNotes: true } }),
+    db.treatmentPlan.findFirst({ where: { medicalRecordId, deletedAt: null }, select: { id: true, procedure: true, observation: true, medicalTreatment: true } }),
     db.soapNote.findFirst({ where: { medicalRecordId, deletedAt: null }, select: { id: true, createdAt: true, updatedAt: true, subjective: true, objective: true, assessment: true, plan: true } }),
     db.vitalSignRecord.findMany({ where: { medicalRecordId, deletedAt: null }, orderBy: { recordedAt: 'asc' } }),
     db.attachment.findMany({ where: { entityType: 'MR', entityId: medicalRecordId, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
@@ -377,21 +378,21 @@ export async function getClinicalTimeline(medicalRecordId: string) {
     {
       id: `${medicalRecord.id}-diagnosis`,
       kind: 'diagnosis',
-      title: 'Diagnosis placeholder',
+      title: 'Diagnosis',
       date: medicalRecord.createdAt,
       detail: diagnosis?.primaryDiagnosis || diagnosis?.clinicalNotes || 'Belum ada diagnosis',
     },
     {
       id: `${medicalRecord.id}-treatment`,
       kind: 'treatment',
-      title: 'Treatment placeholder',
+      title: 'Treatment Plan',
       date: medicalRecord.updatedAt,
-      detail: medicalRecord.notes || 'Belum ada tindakan',
+      detail: treatmentPlan?.procedure || treatmentPlan?.observation || treatmentPlan?.medicalTreatment || medicalRecord.notes || 'Belum ada tindakan',
     },
     {
       id: `${medicalRecord.id}-prescription`,
       kind: 'prescription',
-      title: 'Prescription placeholder',
+      title: 'Prescription',
       date: medicalRecord.updatedAt,
       detail: prescriptions.length ? `${prescriptions.length} resep tercatat` : 'Belum ada resep',
     },

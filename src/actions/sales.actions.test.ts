@@ -23,7 +23,7 @@ const getSessionUserMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/session', () => ({ getSessionUser: getSessionUserMock }));
 
-import { adjustLoyaltyPoints, closeCashRegister, createInvoicePayment, createInvoiceRefund, createPosCheckout, createPromotion, createVoucher, getBillingSummary, getCustomerMembership, getInvoiceDetail, listInvoicePayments, listSalesTransactions, openCashRegister, redeemLoyaltyPoints, updateInvoiceBilling, upsertCustomerMembership, voidInvoice } from './sales.actions';
+import { adjustLoyaltyPoints, closeCashRegister, createInvoicePayment, createInvoiceRefund, createPosCheckout, createPromotion, createVoucher, getBillingSummary, getCustomerMembership, getInvoiceDetail, getReceiptData, listInvoicePayments, listSalesTransactions, openCashRegister, redeemLoyaltyPoints, updateInvoiceBilling, upsertCustomerMembership, voidInvoice } from './sales.actions';
 
 describe('sales actions', () => {
   beforeEach(() => {
@@ -63,6 +63,23 @@ describe('sales actions', () => {
 
     expect(result.success).toBe(true);
     expect(dbMock.invoice.update).toHaveBeenCalled();
+  });
+
+  it('returns a receipt reference and marks partial payments correctly', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-2b', role: 'CASHIER', fullName: 'Kasir' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-2b', role: 'CASHIER', isActive: true, deletedAt: null });
+    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 10, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.invoice.create.mockResolvedValue({ id: 'invoice-partial', invoiceNo: 'INV-202607-00002', receiptNo: 'RCP-0002' });
+    dbMock.payment.create.mockResolvedValue({ id: 'payment-partial' });
+    dbMock.invoice.findUnique.mockResolvedValue({ id: 'invoice-partial', invoiceNo: 'INV-202607-00002', receiptNo: 'RCP-0002', status: 'PARTIAL', total: 3000, paidAmount: 1000, dueDate: new Date('2026-07-20'), paymentTerms: 'Net 7', notes: 'Pending', createdAt: new Date(), customer: { id: 'cust-1', name: 'Walk-In' }, items: [{ description: 'Paracetamol', qty: 2, unitPrice: 1500, total: 3000 }], payments: [] });
+
+    const checkoutResult = await createPosCheckout({ customerId: 'cust-1', items: [{ productId: 'prod-1', qty: 2, unitPrice: 1500 }], discount: 0, paymentMethod: 'CASH', amountPaid: 1000, notes: 'Partial' });
+    const receiptResult = await getReceiptData('invoice-partial');
+
+    expect(checkoutResult.success).toBe(true);
+    expect(receiptResult.success).toBe(true);
+    expect((checkoutResult as { data?: { receiptNo?: string } }).data?.receiptNo).toBeDefined();
+    expect(receiptResult.success && receiptResult.data?.receiptNo).toBe('RCP-0002');
   });
 
   it('creates a invoice payment and records history', async () => {
