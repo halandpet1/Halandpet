@@ -1,9 +1,10 @@
 'use server';
 
-import { Prisma, type UserRole } from '@prisma/client';
+import type { Prisma, UserRole } from '@prisma/client';
 import { db } from '@/lib/db';
 import { diagnosisSchema, treatmentPlanSchema, prescriptionSchema, followUpSchema } from '@/validators/clinical-slice3.schema';
 import { parseOrFail, revalidateCustomerViews, requireRole, type ActionResult } from '@/lib/action-utils';
+import { allocateFefoBatches } from '@/lib/inventory-utils';
 
 const doctorRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR'];
 const staffViewRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'];
@@ -169,11 +170,13 @@ export async function createPrescription(rawData: unknown): Promise<ActionResult
   const product = await db.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null, isActive: true }, select: { id: true, name: true, requiresBatch: true, currentQty: true } });
   if (!product) return { success: false, error: 'Obat tidak ditemukan' };
 
-  const batch = product.requiresBatch
-    ? await db.inventoryBatch.findFirst({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, orderBy: [{ expiryDate: 'asc' }, { createdAt: 'asc' }] })
-    : null;
+  const batches = product.requiresBatch
+    ? await db.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true }, orderBy: [{ expiryDate: 'asc' }, { createdAt: 'asc' }] })
+    : [];
 
-  if (product.requiresBatch && (!batch || batch.currentQty < parsed.data.quantity)) {
+  const allocations = product.requiresBatch ? allocateFefoBatches(batches, parsed.data.quantity) : [];
+
+  if (product.requiresBatch && (!allocations.length || allocations.reduce((sum: number, allocation: { qty: number }) => sum + allocation.qty, 0) < parsed.data.quantity)) {
     return { success: false, error: 'Stok obat tidak mencukupi' };
   }
 
@@ -188,7 +191,7 @@ export async function createPrescription(rawData: unknown): Promise<ActionResult
         diagnosisId: diagnosis.id,
         doctorId: actor.id,
         productId: product.id,
-        inventoryBatchId: batch?.id ?? null,
+        inventoryBatchId: allocations[0]?.id ?? null,
         medicine: parsed.data.medicine.trim(),
         dosage: parsed.data.dosage?.trim() || null,
         frequency: parsed.data.frequency?.trim() || null,
@@ -204,25 +207,31 @@ export async function createPrescription(rawData: unknown): Promise<ActionResult
       },
     });
 
-    if (product.requiresBatch && batch) {
-      const updatedBatch = await tx.inventoryBatch.update({
-        where: { id: batch.id },
-        data: { currentQty: batch.currentQty - parsed.data.quantity, updatedAt: new Date() },
-      });
+    if (product.requiresBatch && allocations.length) {
+      await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: parsed.data.quantity }, updatedAt: new Date() } });
 
-      await tx.stockMovement.create({
-        data: {
-          productId: product.id,
-          batchId: batch.id,
-          type: 'OUT',
-          refType: 'MEDICAL',
-          refId: created.id,
-          qty: parsed.data.quantity,
-          balanceAfter: updatedBatch.currentQty,
-          notes: `Resep ${parsed.data.medicine}`,
-          createdBy: actor.id,
-        },
-      });
+      for (const allocation of allocations) {
+        const batch = batches.find((candidate) => candidate.id === allocation.id);
+        if (!batch) continue;
+        const updatedBatch = await tx.inventoryBatch.update({
+          where: { id: batch.id },
+          data: { currentQty: batch.currentQty - allocation.qty, updatedAt: new Date() },
+        });
+
+        await tx.stockMovement.create({
+          data: {
+            productId: product.id,
+            batchId: batch.id,
+            type: 'OUT',
+            refType: 'MEDICAL',
+            refId: created.id,
+            qty: -allocation.qty,
+            balanceAfter: updatedBatch.currentQty,
+            notes: `Resep ${parsed.data.medicine}`,
+            createdBy: actor.id,
+          },
+        });
+      }
     } else if (!product.requiresBatch) {
       await tx.product.update({ where: { id: product.id }, data: { currentQty: product.currentQty - parsed.data.quantity, updatedAt: new Date() } });
       await tx.stockMovement.create({

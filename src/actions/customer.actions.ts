@@ -1,6 +1,6 @@
 'use server';
 
-import { Prisma, type UserRole } from '@prisma/client';
+import type { Prisma, UserRole } from '@prisma/client';
 import { db } from '@/lib/db';
 import { customerSchema, customerUpdateSchema, petSchema, petUpdateSchema, speciesSchema, breedSchema, colorSchema } from '@/validators/customer.schema';
 import { parseOrFail, revalidateCustomerViews, requireRole, type ActionResult } from '@/lib/action-utils';

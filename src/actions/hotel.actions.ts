@@ -1,11 +1,12 @@
 'use server';
 
-import { Prisma, type PaymentMethod, type UserRole } from '@prisma/client';
+import type { Prisma, PaymentMethod, UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { parseOrFail, type ActionResult } from '@/lib/action-utils';
 import { createHotelBookingSchema, hotelAssignRoomSchema, hotelAvailabilitySchema, hotelBookingUpdateSchema, hotelCheckInSchema, hotelCheckOutSchema, hotelDailyLogSchema, hotelInventoryUsageSchema, hotelRescheduleSchema, hotelRoomSchema, hotelRoomStatusSchema, hotelStayExtensionSchema } from '@/validators/hotel.schema';
+import { allocateFefoBatches } from '@/lib/inventory-utils';
 
 const hotelRoles: UserRole[] = ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'];
 
@@ -303,19 +304,26 @@ export async function createHotelInventoryUsage(rawData: unknown): Promise<Actio
 
       let nextBalance = product.currentQty;
       if (product.requiresBatch) {
-        const batches = await tx.inventoryBatch.findMany({ where: { productId: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true } });
-        if (!batches.length) throw new Error('Batch tidak tersedia');
-        const batch = batches[0];
-        if (batch.currentQty < parsed.data.qty) throw new Error('Stok batch tidak mencukupi');
-        const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - parsed.data.qty, updatedAt: new Date() } });
-        nextBalance = updatedBatch.currentQty;
+        const batches = await tx.inventoryBatch.findMany({ where: { productId: parsed.data.productId, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } });
+        const allocations = allocateFefoBatches(batches, parsed.data.qty);
+        if (!allocations.length) throw new Error('Batch tidak tersedia');
+
+        for (const allocation of allocations) {
+          const batch = batches.find((candidate) => candidate.id === allocation.id);
+          if (!batch) continue;
+          const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - allocation.qty, updatedAt: new Date() } });
+          nextBalance = Math.max(0, updatedBatch.currentQty);
+          await tx.stockMovement.create({ data: { productId: parsed.data.productId, batchId: batch.id, warehouseId: null, type: 'OUT', refType: 'SALES', refId: parsed.data.bookingId, qty: -allocation.qty, balanceAfter: nextBalance, notes: parsed.data.notes || null, createdBy: actor.id } });
+        }
+
+        await tx.product.update({ where: { id: parsed.data.productId }, data: { currentQty: { decrement: parsed.data.qty }, updatedAt: new Date() } });
       } else {
         const updatedProduct = await tx.product.update({ where: { id: parsed.data.productId }, data: { currentQty: { decrement: parsed.data.qty }, updatedAt: new Date() } });
         nextBalance = updatedProduct.currentQty ?? Math.max(0, product.currentQty - parsed.data.qty);
+        await tx.stockMovement.create({ data: { productId: parsed.data.productId, batchId: null, warehouseId: null, type: 'OUT', refType: 'SALES', refId: parsed.data.bookingId, qty: -parsed.data.qty, balanceAfter: Math.max(0, nextBalance), notes: parsed.data.notes || null, createdBy: actor.id } });
       }
 
       const usage = await tx.hotelInventoryUsage.create({ data: { bookingId: parsed.data.bookingId, productId: parsed.data.productId, qty: parsed.data.qty, notes: parsed.data.notes || null, createdBy: actor.id } });
-      await tx.stockMovement.create({ data: { productId: parsed.data.productId, batchId: null, warehouseId: null, type: 'OUT', refType: 'SALES', refId: usage.id, qty: -parsed.data.qty, balanceAfter: Math.max(0, nextBalance), notes: parsed.data.notes || null, createdBy: actor.id } });
       await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'HotelInventoryUsage', entityId: usage.id, changes: parsed.data as Prisma.InputJsonValue } });
       return usage;
     });

@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { hashPin } from '@/lib/auth';
+import { ensureDevelopmentSeed } from '@/lib/dev-auth';
 
 export async function POST() {
-  if (!db || process.env.NEXT_PHASE === 'phase-production-build') {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
     return NextResponse.json({ ok: false, message: 'Seed is unavailable during build' }, { status: 500 });
+  }
+
+  if (!db) {
+    const seed = await ensureDevelopmentSeed();
+    return NextResponse.json({ ok: true, message: 'Development seed initialized', user: seed });
   }
 
   const existingOwner = await db.user.findFirst({ where: { role: 'OWNER' } });

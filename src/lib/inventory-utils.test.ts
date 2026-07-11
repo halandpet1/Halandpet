@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { selectFefoBatch } from './inventory-utils';
+import { allocateFefoBatches, selectFefoBatch } from './inventory-utils';
 
 describe('selectFefoBatch', () => {
   it('selects the earliest expiring batch with available stock', () => {
@@ -24,5 +24,20 @@ describe('selectFefoBatch', () => {
     const selected = selectFefoBatch(batches as Array<{ id: string; currentQty: number; expiryDate: Date | null }>, 5);
 
     expect(selected).toBeNull();
+  });
+
+  it('allocates across multiple batches using FEFO order', () => {
+    const batches = [
+      { id: 'b1', currentQty: 3, expiryDate: new Date('2026-10-01') },
+      { id: 'b2', currentQty: 4, expiryDate: new Date('2026-08-01') },
+      { id: 'b3', currentQty: 2, expiryDate: new Date('2026-09-01') },
+    ];
+
+    const allocation = allocateFefoBatches(batches as Array<{ id: string; currentQty: number; expiryDate: Date | null }>, 5);
+
+    expect(allocation).toEqual([
+      { id: 'b2', qty: 4 },
+      { id: 'b3', qty: 1 },
+    ]);
   });
 });

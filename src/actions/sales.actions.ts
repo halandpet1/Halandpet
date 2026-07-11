@@ -1,13 +1,13 @@
 'use server';
 
-import { Prisma, type UserRole, type InvoiceStatus, type PaymentMethod } from '@prisma/client';
+import type { Prisma, UserRole, InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { parseOrFail, type ActionResult } from '@/lib/action-utils';
 import { invoiceBillingSchema, posCheckoutSchema, voidInvoiceSchema } from '@/validators/sales.schema';
-import { selectFefoBatch } from '@/lib/inventory-utils';
+import { allocateFefoBatches } from '@/lib/inventory-utils';
 
 const salesRoles: UserRole[] = ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'];
 
@@ -93,30 +93,50 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
         });
 
         if (product.requiresBatch) {
-          const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null }, select: { id: true, currentQty: true, expiryDate: true } });
-          const batch = selectFefoBatch(batches, item.qty);
-          if (!batch) {
+          const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } });
+          const allocations = allocateFefoBatches(batches, item.qty);
+          if (!allocations.length) {
             throw new Error(`Stok batch tidak tersedia untuk ${product.name}`);
           }
-          await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - item.qty } });
-        } else {
-          await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: item.qty } } });
-        }
 
-        await tx.stockMovement.create({
-          data: {
-            productId: product.id,
-            batchId: null,
-            warehouseId: null,
-            type: 'OUT',
-            refType: 'SALES',
-            refId: invoice.id,
-            qty: -item.qty,
-            balanceAfter: Math.max(0, product.currentQty - item.qty),
-            notes: 'POS checkout',
-            createdBy: actor.id,
-          },
-        });
+          for (const allocation of allocations) {
+            const batch = batches.find((candidate) => candidate.id === allocation.id);
+            if (!batch) continue;
+            const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - allocation.qty, updatedAt: new Date() } });
+            await tx.stockMovement.create({
+              data: {
+                productId: product.id,
+                batchId: batch.id,
+                warehouseId: null,
+                type: 'OUT',
+                refType: 'SALES',
+                refId: invoice.id,
+                qty: -allocation.qty,
+                balanceAfter: updatedBatch.currentQty,
+                notes: 'POS checkout',
+                createdBy: actor.id,
+              },
+            });
+          }
+
+          await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
+        } else {
+          await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
+          await tx.stockMovement.create({
+            data: {
+              productId: product.id,
+              batchId: null,
+              warehouseId: null,
+              type: 'OUT',
+              refType: 'SALES',
+              refId: invoice.id,
+              qty: -item.qty,
+              balanceAfter: Math.max(0, product.currentQty - item.qty),
+              notes: 'POS checkout',
+              createdBy: actor.id,
+            },
+          });
+        }
       }
 
 const paymentAmount = Math.min(parsed.data.amountPaid, Number(invoiceTotal));
@@ -220,10 +240,21 @@ export async function voidInvoice(rawData: unknown): Promise<ActionResult<{ id: 
       if (!product) continue;
 
       if (product.requiresBatch) {
-        const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null }, select: { id: true, currentQty: true } });
-        const batch = batches[0];
-        if (batch) {
-          await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + item.qty } });
+        const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: -1 } }, select: { id: true, currentQty: true, expiryDate: true } });
+        const stockMovements = await tx.stockMovement.findMany({ where: { refType: 'SALES', refId: updated.id, productId: product.id, type: 'OUT' }, select: { id: true, batchId: true, qty: true } });
+        if (stockMovements.length) {
+          for (const movement of stockMovements) {
+            const batchId = movement.batchId ?? null;
+            if (!batchId) continue;
+            const batch = batches.find((candidate) => candidate.id === batchId);
+            if (!batch) continue;
+            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + Math.abs(Number(movement.qty)), updatedAt: new Date() } });
+          }
+        } else {
+          const batch = batches[0];
+          if (batch) {
+            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + item.qty, updatedAt: new Date() } });
+          }
         }
       } else {
         await tx.product.update({ where: { id: product.id }, data: { currentQty: { increment: item.qty } } });
@@ -351,10 +382,21 @@ export async function createInvoiceRefund(rawData: unknown): Promise<ActionResul
       const product = await tx.product.findUnique({ where: { id: item.productId }, select: { id: true, name: true, requiresBatch: true, currentQty: true } });
       if (!product) continue;
       if (product.requiresBatch) {
-        const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null }, select: { id: true, currentQty: true, expiryDate: true } });
-        const batch = batches[0];
-        if (batch) {
-          await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + item.qty } });
+        const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: -1 } }, select: { id: true, currentQty: true, expiryDate: true } });
+        const stockMovements = await tx.stockMovement.findMany({ where: { refType: 'SALES', refId: invoice.id, productId: product.id, type: 'OUT' }, select: { id: true, batchId: true, qty: true } });
+        if (stockMovements.length) {
+          for (const movement of stockMovements) {
+            const batchId = movement.batchId ?? null;
+            if (!batchId) continue;
+            const batch = batches.find((candidate) => candidate.id === batchId);
+            if (!batch) continue;
+            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + Math.abs(Number(movement.qty)), updatedAt: new Date() } });
+          }
+        } else {
+          const batch = batches[0];
+          if (batch) {
+            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + item.qty, updatedAt: new Date() } });
+          }
         }
       } else {
         await tx.product.update({ where: { id: product.id }, data: { currentQty: { increment: item.qty } } });

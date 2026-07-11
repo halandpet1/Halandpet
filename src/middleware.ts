@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 
-const publicPaths = ['/login', '/api/auth/login', '/api/health', '/api/live', '/api/ready'];
+const publicPaths = ['/login', '/api/auth/login', '/api/health', '/api/live', '/api/ready', '/api/seed'];
 
 const roleAccess: Record<string, Array<'OWNER' | 'ADMIN' | 'DOCTOR' | 'CASHIER' | 'STAFF' | 'CUSTOMER'>> = {
   '/admin': ['OWNER', 'ADMIN'],

@@ -6,6 +6,7 @@ import { hashPin, verifyPin } from '@/lib/auth';
 import { setSessionCookie } from '@/lib/session';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { usernameSchema, pinSchema } from '@/validators/common.schema';
+import { ensureDevelopmentSeed, getDevelopmentAuthUser, verifyDevelopmentPin } from '@/lib/dev-auth';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -14,10 +15,6 @@ const loginSchema = z.object({
 });
 
 export async function loginAction(rawData: FormData | Record<string, unknown>) {
-  if (!db) {
-    return { success: false, error: 'Database belum dikonfigurasi' };
-  }
-
   const data = rawData instanceof FormData ? Object.fromEntries(rawData.entries()) : rawData;
   const parsed = loginSchema.safeParse(data);
 
@@ -31,26 +28,39 @@ export async function loginAction(rawData: FormData | Record<string, unknown>) {
     return { success: false, error: `Terlalu banyak percobaan login. Silakan coba lagi dalam ${Math.ceil(rateLimitResult.retryAfterMs / 1000)} detik.` };
   }
 
-  const user = await db.user.findFirst({
-    where: { username: parsed.data.username, deletedAt: null },
-  });
+  let user;
+  if (!db) {
+    await ensureDevelopmentSeed();
+    user = await getDevelopmentAuthUser(parsed.data.username);
+    if (!user) {
+      return { success: false, error: 'Username atau PIN tidak valid' };
+    }
+  } else {
+    user = await db.user.findFirst({
+      where: { username: parsed.data.username, deletedAt: null },
+    });
 
-  if (!user) {
-    return { success: false, error: 'Username atau PIN tidak valid' };
+    if (!user) {
+      return { success: false, error: 'Username atau PIN tidak valid' };
+    }
   }
 
-  const isValid = await verifyPin(parsed.data.pin, user.pinHash);
+  const isValid = db
+    ? await verifyPin(parsed.data.pin, user.pinHash)
+    : await verifyDevelopmentPin(parsed.data.username, parsed.data.pin);
   if (!isValid) {
     return { success: false, error: 'Username atau PIN tidak valid' };
   }
 
-  await db.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date(), mustChangePin: false },
-  });
+  if (db) {
+    await db.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), mustChangePin: false },
+    });
+  }
 
   await setSessionCookie({ id: user.id, role: user.role, fullName: user.fullName });
-  redirect('/dashboard');
+  redirect(user.role === 'CUSTOMER' ? '/portal' : '/dashboard');
 }
 
 export async function createOwnerAction() {

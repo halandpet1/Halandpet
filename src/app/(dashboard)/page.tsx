@@ -7,12 +7,52 @@ import { formatCurrency } from '@/lib/utils';
 
 export default async function DashboardPage() {
   if (!db || process.env.NEXT_PHASE === 'phase-production-build') {
+    const fallbackCards = [
+      { label: 'Pelanggan', value: '0', icon: Users2, accent: 'text-sky-300' },
+      { label: 'Transaksi', value: '0', icon: BarChart3, accent: 'text-emerald-300' },
+      { label: 'Produk', value: '0', icon: Activity, accent: 'text-violet-300' },
+      { label: 'Pendapatan', value: 'Rp 0', icon: ArrowUpRight, accent: 'text-amber-300' },
+    ];
+
     return (
-      <Card className="border-sky-500/20 bg-slate-900/80">
-        <CardContent className="p-6">
-          <p className="text-sm text-slate-400">Database belum dikonfigurasi.</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-8">
+        <div className="flex flex-col gap-3 rounded-3xl border border-slate-800/90 bg-slate-900/70 p-6 shadow-[0_20px_60px_rgba(2,6,23,0.35)]">
+          <div className="flex items-center gap-2">
+            <Badge className="border-sky-400/20 bg-sky-500/10 text-sky-300">Live Overview</Badge>
+            <Badge variant="outline" className="border-slate-700 text-slate-300">
+              Mode lokal
+            </Badge>
+          </div>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Dashboard</p>
+              <h1 className="text-3xl font-semibold text-white">Ringkasan operasional</h1>
+            </div>
+            <p className="max-w-2xl text-sm text-slate-400">Database belum dikonfigurasi, sehingga dashboard menampilkan status lokal yang aman untuk pengujian dan demo.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {fallbackCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <Card key={card.label} className="border-slate-800/80 bg-slate-900/70">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-slate-400">{card.label}</p>
+                      <p className="mt-3 text-2xl font-semibold text-white">{card.value}</p>
+                    </div>
+                    <div className={`rounded-xl bg-slate-950/70 p-2 ${card.accent}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
     );
   }
 

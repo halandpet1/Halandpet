@@ -1,20 +1,18 @@
 import { cookies } from 'next/headers';
-import type { $Enums } from '@prisma/client';
+import { UserRole } from '@prisma/client';
+import { validateProductionEnvironment } from '@/lib/runtime';
 
 export type SessionUser = {
   id: string;
-  role: $Enums.UserRole;
+  role: UserRole;
   fullName: string;
 };
 
 const SESSION_COOKIE_NAME = 'haland_session';
 
 function getSessionSecret() {
+  validateProductionEnvironment();
   const configuredSecret = process.env.SESSION_SECRET;
-  if (process.env.NODE_ENV === 'production' && !configuredSecret) {
-    throw new Error('SESSION_SECRET is required in production');
-  }
-
   return configuredSecret ?? 'dev-session-secret-change-me';
 }
 
@@ -106,28 +104,30 @@ export async function getSessionUser() {
 export async function setSessionCookie(session: SessionUser) {
   const cookieStore = await cookies();
   const token = await encodeSession(session);
+  const isProduction = process.env.NODE_ENV === 'production';
   cookieStore.set({
     name: SESSION_COOKIE_NAME,
     value: token,
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     path: '/',
     maxAge: 60 * 60 * 8,
-    partitioned: process.env.NODE_ENV === 'production',
+    partitioned: isProduction,
   });
 }
 
 export async function clearSessionCookie() {
   const cookieStore = await cookies();
+  const isProduction = process.env.NODE_ENV === 'production';
   cookieStore.set({
     name: SESSION_COOKIE_NAME,
     value: '',
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     path: '/',
     expires: new Date(0),
-    partitioned: process.env.NODE_ENV === 'production',
+    partitioned: isProduction,
   });
 }

@@ -15,3 +15,32 @@ export function selectFefoBatch(batches: InventoryBatchCandidate[], requiredQty:
 
   return availableBatches.find((batch) => batch.currentQty >= requiredQty) ?? null;
 }
+
+export function allocateFefoBatches(batches: InventoryBatchCandidate[], requiredQty: number) {
+  let remaining = requiredQty;
+  const allocations: Array<{ id: string; qty: number }> = [];
+
+  const availableBatches = batches
+    .filter((batch) => batch.currentQty > 0 && (batch.expiryDate ? batch.expiryDate >= new Date() : true))
+    .sort((left, right) => {
+      const leftExpiry = left.expiryDate ? left.expiryDate.getTime() : Number.POSITIVE_INFINITY;
+      const rightExpiry = right.expiryDate ? right.expiryDate.getTime() : Number.POSITIVE_INFINITY;
+      return leftExpiry - rightExpiry;
+    });
+
+  for (const batch of availableBatches) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    if (batch.currentQty <= 0) {
+      continue;
+    }
+
+    const qty = Math.min(batch.currentQty, remaining);
+    allocations.push({ id: batch.id, qty });
+    remaining -= qty;
+  }
+
+  return remaining <= 0 ? allocations : [];
+}

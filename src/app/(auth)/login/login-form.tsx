@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { loginAction } from '@/actions/auth.actions';
 
 export function LoginForm() {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -22,24 +24,30 @@ export function LoginForm() {
     }
 
     setPending(false);
+    router.refresh();
+    router.replace('/dashboard');
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <label className="block text-sm">
+      <label className="block text-sm" htmlFor="username">
         <span className="mb-2 block">Username</span>
         <input
+          id="username"
           name="username"
+          autoComplete="username"
           className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-4 py-3 outline-none ring-0"
           placeholder="admin_john"
         />
       </label>
-      <label className="block text-sm">
+      <label className="block text-sm" htmlFor="pin">
         <span className="mb-2 block">PIN</span>
         <input
+          id="pin"
           name="pin"
           type="password"
           inputMode="numeric"
+          autoComplete="current-password"
           className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-4 py-3 outline-none ring-0"
           placeholder="123456"
         />

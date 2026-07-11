@@ -1,4 +1,4 @@
-import { Prisma, type UserRole } from '@prisma/client';
+import type { Prisma, UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';

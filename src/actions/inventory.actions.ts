@@ -1,12 +1,12 @@
 'use server';
 
-import { Prisma, type UserRole } from '@prisma/client';
+import type { Prisma, UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { parseOrFail, type ActionResult } from '@/lib/action-utils';
 import { disposalSchema, goodsReceiptSchema, productSchema, purchaseOrderSchema, purchaseRequestSchema, stockAdjustmentSchema, stockOpnameSchema, stockReturnSchema, supplierInvoiceSchema, supplierPaymentSchema, supplierSchema, warehouseSchema, warehouseTransferSchema } from '@/validators/inventory.schema';
-import { selectFefoBatch } from '@/lib/inventory-utils';
+import { allocateFefoBatches } from '@/lib/inventory-utils';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 const inventoryRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'];
@@ -693,8 +693,9 @@ export async function createDispensing(rawData: unknown): Promise<ActionResult<{
   const product = await db.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null, isActive: true }, select: { id: true, name: true, requiresBatch: true, currentQty: true } });
   if (!product) return { success: false, error: 'Produk tidak ditemukan' };
 
-  const batch = product.requiresBatch ? selectFefoBatch((await db.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } })) as Array<{ id: string; currentQty: number; expiryDate: Date | null }>, Math.abs(parsed.data.delta)) : null;
-  if (product.requiresBatch && (!batch || batch.currentQty < Math.abs(parsed.data.delta))) {
+  const batches = product.requiresBatch ? (await db.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } })) as Array<{ id: string; currentQty: number; expiryDate: Date | null }> : [];
+  const allocations = product.requiresBatch ? allocateFefoBatches(batches, Math.abs(parsed.data.delta)) : [];
+  if (product.requiresBatch && !allocations.length) {
     return { success: false, error: 'Stok obat tidak mencukupi' };
   }
 
@@ -703,10 +704,15 @@ export async function createDispensing(rawData: unknown): Promise<ActionResult<{
   }
 
   const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    if (product.requiresBatch && batch) {
-      const nextBatchQty = (batch.currentQty ?? 0) - Math.abs(parsed.data.delta);
-      const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: nextBatchQty, updatedAt: new Date() } });
-      await tx.stockMovement.create({ data: { productId: product.id, batchId: batch.id, warehouseId: null, type: 'OUT', refType: 'MEDICAL', refId: `dispense-${Date.now()}`, qty: Math.abs(parsed.data.delta), balanceAfter: updatedBatch.currentQty, notes: parsed.data.notes, createdBy: actor.id } });
+    if (product.requiresBatch && allocations.length) {
+      await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: Math.abs(parsed.data.delta) }, updatedAt: new Date() } });
+      for (const allocation of allocations) {
+        const batch = batches.find((candidate) => candidate.id === allocation.id);
+        if (!batch) continue;
+        const nextBatchQty = (batch.currentQty ?? 0) - allocation.qty;
+        const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: nextBatchQty, updatedAt: new Date() } });
+        await tx.stockMovement.create({ data: { productId: product.id, batchId: batch.id, warehouseId: null, type: 'OUT', refType: 'MEDICAL', refId: `dispense-${Date.now()}`, qty: -allocation.qty, balanceAfter: updatedBatch.currentQty, notes: parsed.data.notes, createdBy: actor.id } });
+      }
     } else if (!product.requiresBatch) {
       const updatedProduct = await tx.product.update({ where: { id: product.id }, data: { currentQty: product.currentQty - Math.abs(parsed.data.delta), updatedAt: new Date() } });
       await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: null, type: 'OUT', refType: 'MEDICAL', refId: `dispense-${Date.now()}`, qty: Math.abs(parsed.data.delta), balanceAfter: updatedProduct.currentQty, notes: parsed.data.notes, createdBy: actor.id } });

@@ -1,6 +1,6 @@
 'use server';
 
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { parseOrFail } from '@/lib/action-utils';

@@ -7,7 +7,7 @@ const dbMock = vi.hoisted(() => ({
   invoice: { create: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
   invoiceItem: { create: vi.fn(), findMany: vi.fn() },
   payment: { create: vi.fn(), findMany: vi.fn() },
-  stockMovement: { create: vi.fn() },
+  stockMovement: { create: vi.fn(), findMany: vi.fn() },
   auditLog: { create: vi.fn() },
   customer: { findMany: vi.fn() },
   customerMembership: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
@@ -126,6 +126,29 @@ describe('sales actions', () => {
     expect(result.success).toBe(true);
     expect(dbMock.invoice.update).toHaveBeenCalled();
     expect(dbMock.stockMovement.create).toHaveBeenCalled();
+  });
+
+  it('restores stock to the exact batch records used by a batch-based invoice', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-5b', role: 'OWNER', fullName: 'Owner' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-5b', role: 'OWNER', isActive: true, deletedAt: null });
+    dbMock.invoice.findUnique.mockResolvedValue({ id: 'invoice-batch', status: 'PENDING', total: 3000, paidAmount: 0, customerId: 'cust-1' });
+    dbMock.invoiceItem.findMany.mockResolvedValue([{ productId: 'prod-batch', qty: 3 }]);
+    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-batch', name: 'Batch medicine', currentQty: 7, requiresBatch: true });
+    dbMock.inventoryBatch.findMany.mockResolvedValue([
+      { id: 'batch-1', currentQty: 4, expiryDate: new Date('2030-01-01') },
+      { id: 'batch-2', currentQty: 3, expiryDate: new Date('2029-01-01') },
+    ]);
+    dbMock.stockMovement.findMany.mockResolvedValue([
+      { id: 'mov-1', productId: 'prod-batch', batchId: 'batch-1', qty: -2, type: 'OUT', refType: 'SALES', refId: 'invoice-batch' },
+      { id: 'mov-2', productId: 'prod-batch', batchId: 'batch-2', qty: -1, type: 'OUT', refType: 'SALES', refId: 'invoice-batch' },
+    ]);
+    dbMock.invoice.update.mockResolvedValue({ id: 'invoice-batch', status: 'VOID' });
+
+    const result = await voidInvoice({ invoiceId: 'invoice-batch', reason: 'Customer canceled' });
+
+    expect(result.success).toBe(true);
+    expect(dbMock.inventoryBatch.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'batch-1' }, data: expect.objectContaining({ currentQty: 6 }) }));
+    expect(dbMock.inventoryBatch.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'batch-2' }, data: expect.objectContaining({ currentQty: 4 }) }));
   });
 
   it('returns invoice detail and billing summary data', async () => {
