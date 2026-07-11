@@ -180,7 +180,7 @@ export async function updateInvoiceBilling(rawData: unknown): Promise<ActionResu
   if (!invoice) return { success: false, error: 'Invoice tidak ditemukan' };
 
   const nextDueDate = parsed.data.dueDate ? new Date(parsed.data.dueDate) : null;
-  await db.invoice.update({
+  const updatedInvoice = await db.invoice.update({
     where: { id: parsed.data.id },
     data: {
       status: parsed.data.status as InvoiceStatus,
@@ -189,6 +189,16 @@ export async function updateInvoiceBilling(rawData: unknown): Promise<ActionResu
       notes: parsed.data.notes || null,
       updatedBy: actor.id,
       updatedAt: new Date(),
+    },
+  });
+
+  await db.auditLog.create({
+    data: {
+      userId: actor.id,
+      action: 'UPDATE',
+      entity: 'Invoice',
+      entityId: updatedInvoice.id,
+      changes: parsed.data as Prisma.InputJsonValue,
     },
   });
 
@@ -315,6 +325,16 @@ export async function createInvoicePayment(rawData: unknown): Promise<ActionResu
       status: nextStatus,
       updatedBy: actor.id,
       updatedAt: new Date(),
+    },
+  });
+
+  await db.auditLog.create({
+    data: {
+      userId: actor.id,
+      action: 'CREATE',
+      entity: 'Payment',
+      entityId: payment.id,
+      changes: parsed.data as Prisma.InputJsonValue,
     },
   });
 

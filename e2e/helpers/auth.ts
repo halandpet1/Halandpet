@@ -10,5 +10,5 @@ export async function loginAs(page: Page, username: string, pin: string) {
   await page.getByLabel('Username').fill(username);
   await page.getByLabel('PIN').fill(pin);
   await page.getByRole('button', { name: /masuk/i }).click();
-  await page.waitForURL(/\/(dashboard|portal)/);
+  await page.waitForURL(/\/(portal)?$/);
 }

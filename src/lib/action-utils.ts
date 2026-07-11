@@ -9,7 +9,25 @@ export async function requireSessionUser() {
     return null;
   }
 
-  return getSessionUser();
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) {
+    return null;
+  }
+
+  const dbUser = await db.user.findUnique({
+    where: { id: sessionUser.id },
+    select: { id: true, role: true, fullName: true, isActive: true, deletedAt: true },
+  });
+
+  if (!dbUser || dbUser.deletedAt || !dbUser.isActive) {
+    return null;
+  }
+
+  return {
+    id: dbUser.id,
+    role: dbUser.role,
+    fullName: dbUser.fullName,
+  };
 }
 
 export async function requireRole(allowedRoles: UserRole[]) {

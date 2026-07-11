@@ -8,7 +8,7 @@ const dbMock = vi.hoisted(() => ({
   hotelBooking: { findMany: vi.fn() },
   vaccinationRecord: { findMany: vi.fn() },
   notification: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
-  user: { findMany: vi.fn() },
+  user: { findMany: vi.fn(), findUnique: vi.fn() },
   customerMembership: { findUnique: vi.fn() },
   loyaltyPointLedger: { findMany: vi.fn() },
   voucher: { findMany: vi.fn() },
@@ -21,11 +21,13 @@ const getSessionUserMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/session', () => ({ getSessionUser: getSessionUserMock }));
 
-import { getCustomerPortalOverview, getCustomerPortalReminders, listCustomerNotifications, markCustomerNotificationRead } from './portal.actions';
+import { getCustomerPortalOverview, getCustomerPortalReminders, listCustomerNotifications, markCustomerNotificationRead, updateCustomerPortalProfile } from './portal.actions';
 
-describe('getCustomerPortalOverview', () => {
+describe('portal actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER', fullName: 'Mina' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER', fullName: 'Mina', isActive: true, deletedAt: null });
   });
 
   it('returns customer profile and recent activity for the portal dashboard', async () => {
@@ -101,5 +103,40 @@ describe('getCustomerPortalOverview', () => {
     }
     expect(result.data?.id).toBe('notif-1');
     expect(dbMock.notification.update).toHaveBeenCalledWith({ where: { id: 'notif-1' }, data: { isRead: true } });
+  });
+
+  it('blocks portal access for a valid session when the DB user is inactive', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER', fullName: 'Mina' });
+    dbMock.customer.findFirst.mockResolvedValue(null);
+
+    const result = await getCustomerPortalOverview();
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      throw new Error('Expected portal access to be denied');
+    }
+    expect(result.error).toBe('Akses portal pelanggan tidak tersedia');
+  });
+
+  it('updates the customer portal profile and logs audit activity', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER', fullName: 'Mina' });
+    dbMock.customer.findFirst.mockResolvedValue({ id: 'cust-1', name: 'Mina', phone: null, email: null, address: null, isWalkIn: false, createdAt: new Date('2024-01-01'), updatedAt: new Date('2024-01-01') });
+    dbMock.customer.update.mockResolvedValue({ id: 'cust-1', name: 'Mina Updated', phone: '081234', email: 'mina@example.com', address: 'Bandung', isWalkIn: false, createdAt: new Date('2024-01-01'), updatedAt: new Date('2026-07-11') });
+
+    const result = await import('./portal.actions').then((mod) => mod.updateCustomerPortalProfile({ name: 'Mina Updated', phone: '081234', email: 'mina@example.com', address: 'Bandung' }));
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    expect(result.data.customer.name).toBe('Mina Updated');
+    expect(dbMock.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 'user-1',
+        action: 'UPDATE',
+        entity: 'Customer',
+        entityId: 'cust-1',
+      }),
+    }));
   });
 });

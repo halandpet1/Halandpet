@@ -63,6 +63,14 @@ describe('sales actions', () => {
 
     expect(result.success).toBe(true);
     expect(dbMock.invoice.update).toHaveBeenCalled();
+    expect(dbMock.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 'user-2',
+        action: 'UPDATE',
+        entity: 'Invoice',
+        entityId: 'invoice-1',
+      }),
+    }));
   });
 
   it('returns a receipt reference and marks partial payments correctly', async () => {
@@ -95,6 +103,14 @@ describe('sales actions', () => {
     expect(result.success).toBe(true);
     expect(historyResult.success).toBe(true);
     expect(dbMock.payment.create).toHaveBeenCalled();
+    expect(dbMock.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 'user-3',
+        action: 'CREATE',
+        entity: 'Payment',
+        entityId: 'payment-1',
+      }),
+    }));
   });
 
   it('creates a refund and rolls stock back', async () => {

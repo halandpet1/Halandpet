@@ -60,7 +60,7 @@ export async function loginAction(rawData: FormData | Record<string, unknown>) {
   }
 
   await setSessionCookie({ id: user.id, role: user.role, fullName: user.fullName });
-  redirect(user.role === 'CUSTOMER' ? '/portal' : '/dashboard');
+  redirect(user.role === 'CUSTOMER' ? '/portal' : '/');
 }
 
 export async function createOwnerAction() {

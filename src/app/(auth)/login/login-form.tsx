@@ -25,7 +25,7 @@ export function LoginForm() {
 
     setPending(false);
     router.refresh();
-    router.replace('/dashboard');
+    router.replace('/');
   }
 
   return (

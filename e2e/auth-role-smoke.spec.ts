@@ -8,7 +8,7 @@ test.describe('role-based authentication smoke', () => {
 
   test('owner can login and access dashboard', async ({ page }) => {
     await loginAs(page, 'owner', '123456');
-    await expect(page).toHaveURL(/\/dashboard/);
+    await expect(page).toHaveURL(/\/$/);
     await expect(page.getByText(/ringkasan operasional/i)).toBeVisible();
     await expect(page.getByRole('link', { name: /dashboard/i })).toBeVisible();
   });
