@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 import { parseOrFail, type ActionResult } from '@/lib/action-utils';
-import { invoiceBillingSchema, posCheckoutSchema } from '@/validators/sales.schema';
+import { invoiceBillingSchema, posCheckoutSchema, voidInvoiceSchema } from '@/validators/sales.schema';
 import { selectFefoBatch } from '@/lib/inventory-utils';
 
 const salesRoles: UserRole[] = ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'];
@@ -142,30 +142,92 @@ export async function updateInvoiceBilling(rawData: unknown): Promise<ActionResu
   const invoice = await db.invoice.findUnique({ where: { id: parsed.data.id }, select: { id: true } });
   if (!invoice) return { success: false, error: 'Invoice tidak ditemukan' };
 
+  const nextDueDate = parsed.data.dueDate ? new Date(parsed.data.dueDate) : null;
   await db.invoice.update({
     where: { id: parsed.data.id },
     data: {
       status: parsed.data.status as InvoiceStatus,
+      dueDate: nextDueDate,
+      paymentTerms: parsed.data.paymentTerms || null,
       notes: parsed.data.notes || null,
       updatedBy: actor.id,
       updatedAt: new Date(),
     },
   });
 
-  if (parsed.data.dueDate) {
-    await db.invoice.update({
-      where: { id: parsed.data.id },
-      data: {
-        updatedAt: new Date(),
-      },
-    });
-  }
-
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
     revalidatePath('/dashboard');
   }
 
   return { success: true, data: { id: parsed.data.id } };
+}
+
+export async function voidInvoice(rawData: unknown): Promise<ActionResult<{ id: string }>> {
+  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
+  const actor = await assertRole(['OWNER', 'ADMIN']);
+  if (!actor) return { success: false, error: 'Tidak diizinkan' };
+
+  const parsed = await parseOrFail(voidInvoiceSchema, rawData);
+  if (!parsed.success) return parsed;
+
+  const invoice = await db.invoice.findUnique({ where: { id: parsed.data.invoiceId }, select: { id: true, status: true, paidAmount: true, total: true } });
+  if (!invoice) return { success: false, error: 'Invoice tidak ditemukan' };
+  if (invoice.status === 'VOID' || invoice.status === 'REFUNDED') return { success: false, error: 'Invoice sudah dibatalkan' };
+
+  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const updated = await tx.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        status: 'VOID',
+        paidAmount: 0,
+        notes: parsed.data.reason,
+        updatedBy: actor.id,
+        updatedAt: new Date(),
+      },
+    });
+
+    const items = await tx.invoiceItem.findMany({ where: { invoiceId: invoice.id }, select: { productId: true, qty: true } });
+    for (const item of items) {
+      if (!item.productId) continue;
+      const product = await tx.product.findUnique({ where: { id: item.productId }, select: { id: true, name: true, requiresBatch: true, currentQty: true } });
+      if (!product) continue;
+
+      if (product.requiresBatch) {
+        const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null }, select: { id: true, currentQty: true } });
+        const batch = batches[0];
+        if (batch) {
+          await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + item.qty } });
+        }
+      } else {
+        await tx.product.update({ where: { id: product.id }, data: { currentQty: { increment: item.qty } } });
+      }
+
+      await tx.stockMovement.create({
+        data: {
+          productId: product.id,
+          batchId: null,
+          warehouseId: null,
+          type: 'RETURN',
+          refType: 'SALES',
+          refId: updated.id,
+          qty: item.qty,
+          balanceAfter: product.currentQty + item.qty,
+          notes: `Void invoice: ${parsed.data.reason}`,
+          createdBy: actor.id,
+        },
+      });
+    }
+
+    await tx.auditLog.create({ data: { userId: actor.id, action: 'VOID', entity: 'Invoice', entityId: updated.id, changes: { reason: parsed.data.reason } as Prisma.InputJsonValue } });
+    return updated;
+  });
+
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+    revalidatePath('/dashboard');
+    revalidatePath('/pos');
+  }
+
+  return { success: true, data: { id: result.id } };
 }
 
 export async function createInvoicePayment(rawData: unknown): Promise<ActionResult<{ id: string }>> {

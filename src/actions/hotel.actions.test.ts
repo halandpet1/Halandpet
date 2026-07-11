@@ -77,12 +77,24 @@ describe('hotel actions', () => {
   it('records daily care activity for a booking', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-4', role: 'STAFF', fullName: 'Staff' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-4', role: 'STAFF', isActive: true, deletedAt: null });
+    dbMock.hotelBooking.findUnique.mockResolvedValue({ id: 'booking-4', status: 'CHECKED_IN' });
     dbMock.hotelDailyLog.create.mockResolvedValue({ id: 'log-1' });
 
     const result = await createHotelDailyLog({ bookingId: 'booking-4', notes: 'Good appetite', feeding: true, medication: false, walking: true, bath: false, play: true, weight: 4.2, temperature: 38.2 });
 
     expect(result.success).toBe(true);
     expect(dbMock.hotelDailyLog.create).toHaveBeenCalled();
+  });
+
+  it('rejects a daily care log for a non-existent booking', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-4b', role: 'STAFF', fullName: 'Staff' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-4b', role: 'STAFF', isActive: true, deletedAt: null });
+    dbMock.hotelBooking.findUnique.mockResolvedValue(null);
+
+    const result = await createHotelDailyLog({ bookingId: 'missing-booking', notes: 'No booking', feeding: true });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Booking tidak ditemukan');
   });
 
   it('deducts inventory usage for hotel services', async () => {
@@ -97,6 +109,17 @@ describe('hotel actions', () => {
 
     expect(result.success).toBe(true);
     expect(dbMock.stockMovement.create).toHaveBeenCalled();
+  });
+
+  it('rejects hotel inventory usage when a product does not exist', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-5b', role: 'STAFF', fullName: 'Staff' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-5b', role: 'STAFF', isActive: true, deletedAt: null });
+    dbMock.product.findUnique.mockResolvedValue(null);
+
+    const result = await createHotelInventoryUsage({ bookingId: 'booking-5', productId: 'missing-product', qty: 2, notes: 'Food usage' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Produk tidak ditemukan');
   });
 
   it('creates a hotel room and checks availability', async () => {

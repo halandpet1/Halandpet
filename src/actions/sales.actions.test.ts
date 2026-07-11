@@ -23,7 +23,7 @@ const getSessionUserMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/session', () => ({ getSessionUser: getSessionUserMock }));
 
-import { adjustLoyaltyPoints, closeCashRegister, createInvoicePayment, createInvoiceRefund, createPosCheckout, createPromotion, createVoucher, getBillingSummary, getCustomerMembership, getInvoiceDetail, listInvoicePayments, listSalesTransactions, openCashRegister, redeemLoyaltyPoints, updateInvoiceBilling, upsertCustomerMembership } from './sales.actions';
+import { adjustLoyaltyPoints, closeCashRegister, createInvoicePayment, createInvoiceRefund, createPosCheckout, createPromotion, createVoucher, getBillingSummary, getCustomerMembership, getInvoiceDetail, listInvoicePayments, listSalesTransactions, openCashRegister, redeemLoyaltyPoints, updateInvoiceBilling, upsertCustomerMembership, voidInvoice } from './sales.actions';
 
 describe('sales actions', () => {
   beforeEach(() => {
@@ -96,9 +96,24 @@ describe('sales actions', () => {
     expect(dbMock.stockMovement.create).toHaveBeenCalled();
   });
 
+  it('voids an invoice and reverts stock movement', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-5', role: 'OWNER', fullName: 'Owner' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-5', role: 'OWNER', isActive: true, deletedAt: null });
+    dbMock.invoice.findUnique.mockResolvedValue({ id: 'invoice-1', status: 'PENDING', total: 3000, paidAmount: 0, customerId: 'cust-1' });
+    dbMock.invoiceItem.findMany.mockResolvedValue([{ productId: 'prod-1', qty: 2 }]);
+    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 8, requiresBatch: false });
+    dbMock.invoice.update.mockResolvedValue({ id: 'invoice-1', status: 'VOID' });
+
+    const result = await voidInvoice({ invoiceId: 'invoice-1', reason: 'Customer canceled' });
+
+    expect(result.success).toBe(true);
+    expect(dbMock.invoice.update).toHaveBeenCalled();
+    expect(dbMock.stockMovement.create).toHaveBeenCalled();
+  });
+
   it('returns invoice detail and billing summary data', async () => {
-    getSessionUserMock.mockResolvedValue({ id: 'user-5', role: 'CASHIER', fullName: 'Kasir' });
-    dbMock.user.findUnique.mockResolvedValue({ id: 'user-5', role: 'CASHIER', isActive: true, deletedAt: null });
+    getSessionUserMock.mockResolvedValue({ id: 'user-6', role: 'CASHIER', fullName: 'Kasir' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-6', role: 'CASHIER', isActive: true, deletedAt: null });
     dbMock.invoice.findUnique.mockResolvedValue({
       id: 'invoice-1',
       invoiceNo: 'INV-202607-00001',

@@ -202,74 +202,76 @@ export async function createGoodsReceipt(rawData: unknown): Promise<ActionResult
   const parsed = await parseOrFail(goodsReceiptSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const purchaseOrder = await tx.purchaseOrder.findUnique({ where: { id: parsed.data.purchaseOrderId }, select: { id: true, warehouseId: true, supplierName: true } });
-    if (!purchaseOrder) {
-      return { id: '' };
-    }
-
-    const receipt = await tx.goodsReceipt.create({
-      data: {
-        receiptNo: `GR-${Date.now()}`,
-        purchaseOrderId: purchaseOrder.id,
-        warehouseId: parsed.data.warehouseId || purchaseOrder.warehouseId || null,
-        receivedBy: parsed.data.receivedBy || actor.fullName,
-        notes: parsed.data.notes || null,
-        status: 'RECEIVED',
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
-    });
-
-    for (const item of parsed.data.items) {
-      const product = await tx.product.findFirst({ where: { id: item.productId, deletedAt: null }, select: { id: true, currentQty: true, requiresBatch: true, costPrice: true } });
-      if (!product) continue;
-
-      const nextQty = product.currentQty + item.qty;
-      await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
-
-      if (product.requiresBatch) {
-        await tx.inventoryBatch.create({
-          data: {
-            productId: product.id,
-            batchNo: item.batchNo?.trim() || `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
-            quantity: item.qty,
-            currentQty: item.qty,
-            costPrice: item.unitPrice,
-            warehouseId: parsed.data.warehouseId || purchaseOrder.warehouseId || null,
-          },
-        });
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const purchaseOrder = await tx.purchaseOrder.findUnique({ where: { id: parsed.data.purchaseOrderId }, select: { id: true, warehouseId: true, supplierName: true } });
+      if (!purchaseOrder) {
+        throw new Error('Purchase order tidak ditemukan');
       }
 
-      await tx.goodsReceiptItem.create({
+      const receipt = await tx.goodsReceipt.create({
         data: {
-          goodsReceiptId: receipt.id,
-          productId: product.id,
-          qty: item.qty,
-          unitPrice: item.unitPrice,
-          batchNo: item.batchNo?.trim() || null,
-          expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
-          notes: item.notes || null,
+          receiptNo: `GR-${Date.now()}`,
+          purchaseOrderId: purchaseOrder.id,
+          warehouseId: parsed.data.warehouseId || purchaseOrder.warehouseId || null,
+          receivedBy: parsed.data.receivedBy || actor.fullName,
+          notes: parsed.data.notes || null,
+          status: 'RECEIVED',
+          createdBy: actor.id,
+          updatedBy: actor.id,
         },
       });
 
-      await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: parsed.data.warehouseId || purchaseOrder.warehouseId || null, type: 'IN', refType: 'PURCHASE', refId: receipt.id, qty: item.qty, balanceAfter: nextQty, notes: item.notes || null, createdBy: actor.id } });
+      for (const item of parsed.data.items) {
+        const product = await tx.product.findFirst({ where: { id: item.productId, deletedAt: null }, select: { id: true, currentQty: true, requiresBatch: true, costPrice: true } });
+        if (!product) {
+          throw new Error(`Produk tidak ditemukan: ${item.productId}`);
+        }
+
+        const nextQty = product.currentQty + item.qty;
+        await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
+
+        if (product.requiresBatch) {
+          await tx.inventoryBatch.create({
+            data: {
+              productId: product.id,
+              batchNo: item.batchNo?.trim() || `BATCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+              quantity: item.qty,
+              currentQty: item.qty,
+              costPrice: item.unitPrice,
+              warehouseId: parsed.data.warehouseId || purchaseOrder.warehouseId || null,
+            },
+          });
+        }
+
+        await tx.goodsReceiptItem.create({
+          data: {
+            goodsReceiptId: receipt.id,
+            productId: product.id,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            batchNo: item.batchNo?.trim() || null,
+            expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+            notes: item.notes || null,
+          },
+        });
+
+        await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: parsed.data.warehouseId || purchaseOrder.warehouseId || null, type: 'IN', refType: 'PURCHASE', refId: receipt.id, qty: item.qty, balanceAfter: nextQty, notes: item.notes || null, createdBy: actor.id } });
+      }
+
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'GoodsReceipt', entityId: receipt.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return { id: receipt.id };
+    });
+
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+      revalidatePath('/inventory');
     }
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'GoodsReceipt', entityId: receipt.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return { id: receipt.id };
-  });
-
-  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
-    revalidatePath('/inventory');
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal membuat goods receipt' };
   }
-
-  if (!result.id) {
-    return { success: false, error: 'Purchase order tidak ditemukan' };
-  }
-
-  return { success: true, data: { id: result.id } };
 }
 
 export async function createSupplierInvoice(rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -389,7 +391,7 @@ export async function createStockReturn(rawData: unknown): Promise<ActionResult<
   return { success: true, data: { id: result.id } };
 }
 
-export async function updateWarehouseTransferStatus(rawData: { id: string; status: string; notes?: string }) {
+export async function updateWarehouseTransferStatus(rawData: { id: string; status: string; notes?: string }): Promise<ActionResult<{ id: string }>> {
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(approvalRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
@@ -397,23 +399,30 @@ export async function updateWarehouseTransferStatus(rawData: { id: string; statu
   const existing = await db.warehouseTransfer.findUnique({ where: { id: rawData.id }, select: { id: true, status: true, fromWarehouseId: true, toWarehouseId: true, items: true } });
   if (!existing) return { success: false, error: 'Transfer tidak ditemukan' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.warehouseTransfer.update({ where: { id: rawData.id }, data: { status: rawData.status, approvedBy: actor.id, notes: rawData.notes ?? null, updatedAt: new Date() } });
+  let result;
+  try {
+    result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.warehouseTransfer.update({ where: { id: rawData.id }, data: { status: rawData.status, approvedBy: actor.id, notes: rawData.notes ?? null, updatedAt: new Date() } });
 
-    if (rawData.status === 'APPROVED') {
-      for (const item of existing.items) {
-        const product = await tx.product.findFirst({ where: { id: item.productId, deletedAt: null }, select: { id: true, currentQty: true, requiresBatch: true } });
-        if (!product) continue;
-        const nextQty = Math.max(0, product.currentQty - item.qty);
-        await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
-        await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: existing.fromWarehouseId ?? null, type: 'OUT', refType: 'TRANSFER', refId: updated.id, qty: -item.qty, balanceAfter: nextQty, notes: rawData.notes ?? null, createdBy: actor.id } });
-        await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: existing.toWarehouseId ?? null, type: 'IN', refType: 'TRANSFER', refId: updated.id, qty: item.qty, balanceAfter: nextQty + item.qty, notes: rawData.notes ?? null, createdBy: actor.id } });
+      if (rawData.status === 'APPROVED') {
+        for (const item of existing.items) {
+          const product = await tx.product.findFirst({ where: { id: item.productId, deletedAt: null }, select: { id: true, currentQty: true, requiresBatch: true } });
+          if (!product) {
+            throw new Error(`Produk tidak ditemukan: ${item.productId}`);
+          }
+          const nextQty = Math.max(0, product.currentQty - item.qty);
+          await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
+          await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: existing.fromWarehouseId ?? null, type: 'OUT', refType: 'TRANSFER', refId: updated.id, qty: -item.qty, balanceAfter: nextQty, notes: rawData.notes ?? null, createdBy: actor.id } });
+          await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: existing.toWarehouseId ?? null, type: 'IN', refType: 'TRANSFER', refId: updated.id, qty: item.qty, balanceAfter: nextQty + item.qty, notes: rawData.notes ?? null, createdBy: actor.id } });
+        }
       }
-    }
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'WarehouseTransfer', entityId: updated.id, changes: { status: rawData.status, notes: rawData.notes ?? null } as Prisma.InputJsonValue } });
-    return updated;
-  });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'WarehouseTransfer', entityId: updated.id, changes: { status: rawData.status, notes: rawData.notes ?? null } as Prisma.InputJsonValue } });
+      return updated;
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal memperbarui transfer' };
+  }
 
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
     revalidatePath('/inventory');
@@ -421,7 +430,7 @@ export async function updateWarehouseTransferStatus(rawData: { id: string; statu
   return { success: true, data: { id: result.id } };
 }
 
-export async function updateStockReturnStatus(rawData: { id: string; status: string; notes?: string }) {
+export async function updateStockReturnStatus(rawData: { id: string; status: string; notes?: string }): Promise<ActionResult<{ id: string }>> {
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(approvalRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
@@ -429,21 +438,27 @@ export async function updateStockReturnStatus(rawData: { id: string; status: str
   const existing = await db.stockReturn.findUnique({ where: { id: rawData.id }, select: { id: true, productId: true, warehouseId: true, batchId: true, qty: true, status: true, type: true } });
   if (!existing) return { success: false, error: 'Return tidak ditemukan' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.stockReturn.update({ where: { id: rawData.id }, data: { status: rawData.status, approvedBy: actor.id, notes: rawData.notes ?? null, updatedAt: new Date() } });
+  let result;
+  try {
+    result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.stockReturn.update({ where: { id: rawData.id }, data: { status: rawData.status, approvedBy: actor.id, notes: rawData.notes ?? null, updatedAt: new Date() } });
 
-    if (rawData.status === 'APPROVED') {
-      const product = await tx.product.findFirst({ where: { id: existing.productId, deletedAt: null }, select: { id: true, currentQty: true } });
-      if (product) {
+      if (rawData.status === 'APPROVED') {
+        const product = await tx.product.findFirst({ where: { id: existing.productId, deletedAt: null }, select: { id: true, currentQty: true } });
+        if (!product) {
+          throw new Error(`Produk tidak ditemukan: ${existing.productId}`);
+        }
         const nextQty = Math.max(0, product.currentQty + existing.qty);
         await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
         await tx.stockMovement.create({ data: { productId: product.id, batchId: existing.batchId ?? null, warehouseId: existing.warehouseId ?? null, type: 'IN', refType: 'RETURN', refId: updated.id, qty: existing.qty, balanceAfter: nextQty, notes: rawData.notes ?? null, createdBy: actor.id } });
       }
-    }
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'StockReturn', entityId: updated.id, changes: { status: rawData.status, notes: rawData.notes ?? null } as Prisma.InputJsonValue } });
-    return updated;
-  });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'StockReturn', entityId: updated.id, changes: { status: rawData.status, notes: rawData.notes ?? null } as Prisma.InputJsonValue } });
+      return updated;
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal memperbarui return' };
+  }
 
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
     revalidatePath('/inventory');

@@ -33,3 +33,8 @@ export const salesTransactionSchema = z.object({
   amountPaid: z.coerce.number().min(0).default(0),
   notes: z.string().trim().optional().or(z.literal('')),
 });
+
+export const voidInvoiceSchema = z.object({
+  invoiceId: z.string().trim().min(1, 'Invoice wajib dipilih'),
+  reason: z.string().trim().min(1, 'Alasan void wajib diisi'),
+});

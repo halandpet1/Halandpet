@@ -243,9 +243,30 @@ export async function createHotelDailyLog(rawData: unknown): Promise<ActionResul
   const parsed = await parseOrFail(hotelDailyLogSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const log = await db.hotelDailyLog.create({ data: { bookingId: parsed.data.bookingId, notes: parsed.data.notes || null, feeding: parsed.data.feeding, medication: parsed.data.medication, walking: parsed.data.walking, bath: parsed.data.bath, play: parsed.data.play, weight: parsed.data.weight ? String(parsed.data.weight) : null, temperature: parsed.data.temperature ? String(parsed.data.temperature) : null, createdBy: actor.id } });
-  await db.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'HotelDailyLog', entityId: log.id, changes: parsed.data as Prisma.InputJsonValue } });
-  return { success: true, data: { id: log.id } };
+  const booking = await db.hotelBooking.findUnique({ where: { id: parsed.data.bookingId }, select: { id: true, status: true } });
+  if (!booking) return { success: false, error: 'Booking tidak ditemukan' };
+  if (booking.status !== 'CHECKED_IN') return { success: false, error: 'Booking belum check in' };
+
+  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    const log = await tx.hotelDailyLog.create({
+      data: {
+        bookingId: parsed.data.bookingId,
+        notes: parsed.data.notes || null,
+        feeding: parsed.data.feeding,
+        medication: parsed.data.medication,
+        walking: parsed.data.walking,
+        bath: parsed.data.bath,
+        play: parsed.data.play,
+        weight: parsed.data.weight ? String(parsed.data.weight) : null,
+        temperature: parsed.data.temperature ? String(parsed.data.temperature) : null,
+        createdBy: actor.id,
+      },
+    });
+    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'HotelDailyLog', entityId: log.id, changes: parsed.data as Prisma.InputJsonValue } });
+    return log;
+  });
+
+  return { success: true, data: { id: result.id } };
 }
 
 export async function createHotelInventoryUsage(rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -256,27 +277,36 @@ export async function createHotelInventoryUsage(rawData: unknown): Promise<Actio
   const parsed = await parseOrFail(hotelInventoryUsageSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const product = await tx.product.findUnique({ where: { id: parsed.data.productId }, select: { id: true, currentQty: true, requiresBatch: true } });
-    if (!product) throw new Error('Produk tidak ditemukan');
-    if (product.currentQty < parsed.data.qty) throw new Error('Stok tidak mencukupi');
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const product = await tx.product.findUnique({ where: { id: parsed.data.productId }, select: { id: true, currentQty: true, requiresBatch: true } });
+      if (!product) throw new Error('Produk tidak ditemukan');
+      if (product.currentQty < parsed.data.qty) throw new Error('Stok tidak mencukupi');
 
-    if (product.requiresBatch) {
-      const batches = await tx.inventoryBatch.findMany({ where: { productId: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true } });
-      if (!batches.length) throw new Error('Batch tidak tersedia');
-      await tx.inventoryBatch.update({ where: { id: batches[0].id }, data: { currentQty: batches[0].currentQty - parsed.data.qty } });
-    } else {
-      await tx.product.update({ where: { id: parsed.data.productId }, data: { currentQty: { decrement: parsed.data.qty } } });
-    }
+      let nextBalance = product.currentQty;
+      if (product.requiresBatch) {
+        const batches = await tx.inventoryBatch.findMany({ where: { productId: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true } });
+        if (!batches.length) throw new Error('Batch tidak tersedia');
+        const batch = batches[0];
+        if (batch.currentQty < parsed.data.qty) throw new Error('Stok batch tidak mencukupi');
+        const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - parsed.data.qty, updatedAt: new Date() } });
+        nextBalance = updatedBatch.currentQty;
+      } else {
+        const updatedProduct = await tx.product.update({ where: { id: parsed.data.productId }, data: { currentQty: { decrement: parsed.data.qty }, updatedAt: new Date() } });
+        nextBalance = updatedProduct.currentQty ?? Math.max(0, product.currentQty - parsed.data.qty);
+      }
 
-    const usage = await tx.hotelInventoryUsage.create({ data: { bookingId: parsed.data.bookingId, productId: parsed.data.productId, qty: parsed.data.qty, notes: parsed.data.notes || null, createdBy: actor.id } });
-    await tx.stockMovement.create({ data: { productId: parsed.data.productId, batchId: null, warehouseId: null, type: 'OUT', refType: 'SALES', refId: usage.id, qty: -parsed.data.qty, balanceAfter: Math.max(0, product.currentQty - parsed.data.qty), notes: parsed.data.notes || null, createdBy: actor.id } });
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'HotelInventoryUsage', entityId: usage.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return usage;
-  });
+      const usage = await tx.hotelInventoryUsage.create({ data: { bookingId: parsed.data.bookingId, productId: parsed.data.productId, qty: parsed.data.qty, notes: parsed.data.notes || null, createdBy: actor.id } });
+      await tx.stockMovement.create({ data: { productId: parsed.data.productId, batchId: null, warehouseId: null, type: 'OUT', refType: 'SALES', refId: usage.id, qty: -parsed.data.qty, balanceAfter: Math.max(0, nextBalance), notes: parsed.data.notes || null, createdBy: actor.id } });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'HotelInventoryUsage', entityId: usage.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return usage;
+    });
 
-  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') revalidatePath('/hotel');
-  return { success: true, data: { id: result.id } };
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') revalidatePath('/hotel');
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal membuat penggunaan inventaris hotel' };
+  }
 }
 
 export async function assignHotelBookingRoom(rawData: unknown): Promise<ActionResult<{ id: string }>> {

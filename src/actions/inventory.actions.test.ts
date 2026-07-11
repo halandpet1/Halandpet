@@ -72,6 +72,18 @@ describe('inventory actions', () => {
     expect(dbMock.goodsReceipt.create).toHaveBeenCalled();
   });
 
+  it('rejects a goods receipt when a product does not exist', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-3b', role: 'STAFF', fullName: 'Staff' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-3b', role: 'STAFF', isActive: true, deletedAt: null });
+    dbMock.purchaseOrder.findUnique.mockResolvedValue({ id: 'po-1', warehouseId: 'wh-1', supplierName: 'Supplier' });
+    dbMock.product.findFirst.mockResolvedValue(null);
+
+    const result = await createGoodsReceipt({ purchaseOrderId: 'po-1', warehouseId: 'wh-1', receivedBy: 'Staff', items: [{ productId: 'missing-product', qty: 5, unitPrice: 100 }] });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Produk tidak ditemukan');
+  });
+
   it('creates a supplier invoice for a receipt', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-4', role: 'STAFF', fullName: 'Staff' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-4', role: 'STAFF', isActive: true, deletedAt: null });
@@ -153,6 +165,18 @@ describe('inventory actions', () => {
     expect(dbMock.stockMovement.create).toHaveBeenCalled();
   });
 
+  it('rejects a transfer approval when a referenced product no longer exists', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-6b', role: 'OWNER', fullName: 'Owner' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-6b', role: 'OWNER', isActive: true, deletedAt: null });
+    dbMock.warehouseTransfer.findUnique.mockResolvedValue({ id: 'tr-2', status: 'REQUESTED', fromWarehouseId: 'wh-1', toWarehouseId: 'wh-2', items: [{ productId: 'missing-product', qty: 4, batchNo: null, notes: null }] });
+    dbMock.product.findFirst.mockResolvedValue(null);
+
+    const result = await updateWarehouseTransferStatus({ id: 'tr-2', status: 'APPROVED', notes: 'Approved' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Produk tidak ditemukan');
+  });
+
   it('approves a stock return and updates inventory', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-7', role: 'OWNER', fullName: 'Owner' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-7', role: 'OWNER', isActive: true, deletedAt: null });
@@ -164,5 +188,17 @@ describe('inventory actions', () => {
 
     expect(result.success).toBe(true);
     expect(dbMock.stockMovement.create).toHaveBeenCalled();
+  });
+
+  it('rejects a stock return approval when the referenced product is missing', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-7b', role: 'OWNER', fullName: 'Owner' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-7b', role: 'OWNER', isActive: true, deletedAt: null });
+    dbMock.stockReturn.findUnique.mockResolvedValue({ id: 'rt-2', type: 'SUPPLIER', productId: 'missing-product', warehouseId: 'wh-1', batchId: null, qty: 3, reason: 'Damaged', status: 'REQUESTED' });
+    dbMock.product.findFirst.mockResolvedValue(null);
+
+    const result = await updateStockReturnStatus({ id: 'rt-2', status: 'APPROVED', notes: 'Accepted' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Produk tidak ditemukan');
   });
 });
