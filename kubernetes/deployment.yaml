@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: halandpet
-          image: halandpet:latest
+          image: halandpet:${IMAGE_TAG}
           ports:
             - containerPort: 3000
           env:
@@ -35,6 +35,13 @@ spec:
                 secretKeyRef:
                   name: halandpet-secrets
                   key: nextauth-secret
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           readinessProbe:
             httpGet:
               path: /api/ready

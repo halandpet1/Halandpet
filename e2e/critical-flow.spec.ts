@@ -56,8 +56,8 @@ test.describe('critical user flows', () => {
     await page.getByRole('button', { name: /masuk/i }).click();
 
     await expect(page).toHaveURL(/\/portal$/);
-    await expect(page.getByRole('main').getByText(/portal pelanggan/i)).toBeVisible();
-    await expect(page.getByRole('heading', { name: /profil pelanggan/i })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: /portal pelanggan/i })).toBeVisible();
+    await expect(page.getByText(/profil pelanggan/i).first()).toBeVisible();
 
     await page.getByLabel('Nama').fill('Customer Updated');
     await page.getByLabel('Telepon').fill('081234567890');

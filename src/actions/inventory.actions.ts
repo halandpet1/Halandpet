@@ -57,13 +57,6 @@ async function decrementBatchStock(tx: Prisma.TransactionClient, batchId: string
   return updated;
 }
 
-async function incrementBatchStock(tx: Prisma.TransactionClient, batchId: string, qty: number) {
-  return tx.inventoryBatch.updateMany({
-    where: { id: batchId },
-    data: { currentQty: { increment: qty } },
-  });
-}
-
 function parseDate(value: string | undefined | null) {
   if (!value) {
     return null;

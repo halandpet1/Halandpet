@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { diagnosisSchema, treatmentPlanSchema, prescriptionSchema, followUpSchema } from '@/validators/clinical-slice3.schema';
 import { parseOrFail, revalidateCustomerViews, requireRole, type ActionResult } from '@/lib/action-utils';
 import { allocateFefoBatches } from '@/lib/inventory-utils';
+import { logger } from '@/lib/logger';
 
 const doctorRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR'];
 const staffViewRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'];
@@ -41,28 +42,33 @@ export async function createDiagnosis(rawData: unknown): Promise<ActionResult<{ 
   const existing = await db.diagnosis.findFirst({ where: { medicalRecordId: parsed.data.medicalRecordId, deletedAt: null }, select: { id: true } });
   if (existing) return { success: false, error: 'Diagnosis sudah ada untuk rekam medis ini' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const created = await tx.diagnosis.create({
-      data: {
-        medicalRecordId: parsed.data.medicalRecordId,
-        doctorId: actor.id,
-        primaryDiagnosis: parsed.data.primaryDiagnosis?.trim() || null,
-        secondaryDiagnosis: parsed.data.secondaryDiagnosis?.trim() || null,
-        differentialDiagnosis: parsed.data.differentialDiagnosis?.trim() || null,
-        clinicalNotes: parsed.data.clinicalNotes?.trim() || null,
-        isLocked: parsed.data.isLocked ?? false,
-        lockedAt: parsed.data.isLocked ? new Date() : null,
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.diagnosis.create({
+        data: {
+          medicalRecordId: parsed.data.medicalRecordId,
+          doctorId: actor.id,
+          primaryDiagnosis: parsed.data.primaryDiagnosis?.trim() || null,
+          secondaryDiagnosis: parsed.data.secondaryDiagnosis?.trim() || null,
+          differentialDiagnosis: parsed.data.differentialDiagnosis?.trim() || null,
+          clinicalNotes: parsed.data.clinicalNotes?.trim() || null,
+          isLocked: parsed.data.isLocked ?? false,
+          lockedAt: parsed.data.isLocked ? new Date() : null,
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Diagnosis', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return created;
     });
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Diagnosis', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return created;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('createDiagnosis failed', { action: 'createDiagnosis', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function updateDiagnosis(id: string, rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -77,26 +83,31 @@ export async function updateDiagnosis(id: string, rawData: unknown): Promise<Act
   if (!existing) return { success: false, error: 'Diagnosis tidak ditemukan' };
   if (existing.isLocked) return { success: false, error: 'Diagnosis sudah terkunci' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.diagnosis.update({
-      where: { id },
-      data: {
-        primaryDiagnosis: parsed.data.primaryDiagnosis?.trim() || null,
-        secondaryDiagnosis: parsed.data.secondaryDiagnosis?.trim() || null,
-        differentialDiagnosis: parsed.data.differentialDiagnosis?.trim() || null,
-        clinicalNotes: parsed.data.clinicalNotes?.trim() || null,
-        isLocked: parsed.data.isLocked ?? false,
-        lockedAt: parsed.data.isLocked ? new Date() : null,
-        updatedBy: actor.id,
-      },
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.diagnosis.update({
+        where: { id },
+        data: {
+          primaryDiagnosis: parsed.data.primaryDiagnosis?.trim() || null,
+          secondaryDiagnosis: parsed.data.secondaryDiagnosis?.trim() || null,
+          differentialDiagnosis: parsed.data.differentialDiagnosis?.trim() || null,
+          clinicalNotes: parsed.data.clinicalNotes?.trim() || null,
+          isLocked: parsed.data.isLocked ?? false,
+          lockedAt: parsed.data.isLocked ? new Date() : null,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'Diagnosis', entityId: updated.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return updated;
     });
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'Diagnosis', entityId: updated.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return updated;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('updateDiagnosis failed', { action: 'updateDiagnosis', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function createTreatmentPlan(rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -114,27 +125,32 @@ export async function createTreatmentPlan(rawData: unknown): Promise<ActionResul
   const existing = await db.treatmentPlan.findFirst({ where: { medicalRecordId: parsed.data.medicalRecordId, deletedAt: null }, select: { id: true } });
   if (existing) return { success: false, error: 'Treatment plan sudah ada untuk rekam medis ini' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const created = await tx.treatmentPlan.create({
-      data: {
-        medicalRecordId: parsed.data.medicalRecordId,
-        doctorId: actor.id,
-        medicalTreatment: parsed.data.medicalTreatment?.trim() || null,
-        procedure: parsed.data.procedure?.trim() || null,
-        observation: parsed.data.observation?.trim() || null,
-        hospitalizationRecommendation: parsed.data.hospitalizationRecommendation?.trim() || null,
-        followUpRecommendation: parsed.data.followUpRecommendation?.trim() || null,
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.treatmentPlan.create({
+        data: {
+          medicalRecordId: parsed.data.medicalRecordId,
+          doctorId: actor.id,
+          medicalTreatment: parsed.data.medicalTreatment?.trim() || null,
+          procedure: parsed.data.procedure?.trim() || null,
+          observation: parsed.data.observation?.trim() || null,
+          hospitalizationRecommendation: parsed.data.hospitalizationRecommendation?.trim() || null,
+          followUpRecommendation: parsed.data.followUpRecommendation?.trim() || null,
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'TreatmentPlan', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return created;
     });
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'TreatmentPlan', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return created;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('createTreatmentPlan failed', { action: 'createTreatmentPlan', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function updatePrescriptionQueueStatus(id: string, queueStatus: string): Promise<ActionResult<{ id: string }>> {
@@ -145,14 +161,19 @@ export async function updatePrescriptionQueueStatus(id: string, queueStatus: str
   const existing = await db.prescription.findFirst({ where: { id, deletedAt: null }, select: { id: true, status: true } });
   if (!existing) return { success: false, error: 'Resep tidak ditemukan' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.prescription.update({ where: { id }, data: { queueStatus, queueUpdatedAt: new Date(), updatedBy: actor.id } });
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'Prescription', entityId: updated.id, changes: { queueStatus } as Prisma.InputJsonValue } });
-    return updated;
-  });
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.prescription.update({ where: { id }, data: { queueStatus, queueUpdatedAt: new Date(), updatedBy: actor.id } });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'UPDATE', entity: 'Prescription', entityId: updated.id, changes: { queueStatus } as Prisma.InputJsonValue } });
+      return updated;
+    });
 
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('updatePrescriptionQueueStatus failed', { action: 'updatePrescriptionQueueStatus', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function createPrescription(rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -184,77 +205,82 @@ export async function createPrescription(rawData: unknown): Promise<ActionResult
     return { success: false, error: 'Stok obat tidak mencukupi' };
   }
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const created = await tx.prescription.create({
-      data: {
-        medicalRecordId: diagnosis.medicalRecordId,
-        diagnosisId: diagnosis.id,
-        doctorId: actor.id,
-        productId: product.id,
-        inventoryBatchId: allocations[0]?.id ?? null,
-        medicine: parsed.data.medicine.trim(),
-        dosage: parsed.data.dosage?.trim() || null,
-        frequency: parsed.data.frequency?.trim() || null,
-        duration: parsed.data.duration?.trim() || null,
-        instructions: parsed.data.instructions?.trim() || null,
-        quantity: parsed.data.quantity,
-        refill: parsed.data.refill,
-        warnings: parsed.data.warnings?.trim() || null,
-        status: parsed.data.status,
-        queueStatus: 'WAITING',
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
-    });
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.prescription.create({
+        data: {
+          medicalRecordId: diagnosis.medicalRecordId,
+          diagnosisId: diagnosis.id,
+          doctorId: actor.id,
+          productId: product.id,
+          inventoryBatchId: allocations[0]?.id ?? null,
+          medicine: parsed.data.medicine.trim(),
+          dosage: parsed.data.dosage?.trim() || null,
+          frequency: parsed.data.frequency?.trim() || null,
+          duration: parsed.data.duration?.trim() || null,
+          instructions: parsed.data.instructions?.trim() || null,
+          quantity: parsed.data.quantity,
+          refill: parsed.data.refill,
+          warnings: parsed.data.warnings?.trim() || null,
+          status: parsed.data.status,
+          queueStatus: 'WAITING',
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
 
-    if (product.requiresBatch && allocations.length) {
-      await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: parsed.data.quantity }, updatedAt: new Date() } });
+      if (product.requiresBatch && allocations.length) {
+        await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: parsed.data.quantity }, updatedAt: new Date() } });
 
-      for (const allocation of allocations) {
-        const batch = batches.find((candidate) => candidate.id === allocation.id);
-        if (!batch) continue;
-        const updatedBatch = await tx.inventoryBatch.update({
-          where: { id: batch.id },
-          data: { currentQty: batch.currentQty - allocation.qty, updatedAt: new Date() },
-        });
+        for (const allocation of allocations) {
+          const batch = batches.find((candidate) => candidate.id === allocation.id);
+          if (!batch) continue;
+          const updatedBatch = await tx.inventoryBatch.update({
+            where: { id: batch.id },
+            data: { currentQty: batch.currentQty - allocation.qty, updatedAt: new Date() },
+          });
 
+          await tx.stockMovement.create({
+            data: {
+              productId: product.id,
+              batchId: batch.id,
+              type: 'OUT',
+              refType: 'MEDICAL',
+              refId: created.id,
+              qty: -allocation.qty,
+              balanceAfter: updatedBatch.currentQty,
+              notes: `Resep ${parsed.data.medicine}`,
+              createdBy: actor.id,
+            },
+          });
+        }
+      } else if (!product.requiresBatch) {
+        await tx.product.update({ where: { id: product.id }, data: { currentQty: product.currentQty - parsed.data.quantity, updatedAt: new Date() } });
         await tx.stockMovement.create({
           data: {
             productId: product.id,
-            batchId: batch.id,
+            batchId: null,
             type: 'OUT',
             refType: 'MEDICAL',
             refId: created.id,
-            qty: -allocation.qty,
-            balanceAfter: updatedBatch.currentQty,
+            qty: parsed.data.quantity,
+            balanceAfter: product.currentQty - parsed.data.quantity,
             notes: `Resep ${parsed.data.medicine}`,
             createdBy: actor.id,
           },
         });
       }
-    } else if (!product.requiresBatch) {
-      await tx.product.update({ where: { id: product.id }, data: { currentQty: product.currentQty - parsed.data.quantity, updatedAt: new Date() } });
-      await tx.stockMovement.create({
-        data: {
-          productId: product.id,
-          batchId: null,
-          type: 'OUT',
-          refType: 'MEDICAL',
-          refId: created.id,
-          qty: parsed.data.quantity,
-          balanceAfter: product.currentQty - parsed.data.quantity,
-          notes: `Resep ${parsed.data.medicine}`,
-          createdBy: actor.id,
-        },
-      });
-    }
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Prescription', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return created;
-  });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Prescription', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return created;
+    });
 
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('createPrescription failed', { action: 'createPrescription', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function createFollowUp(rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -276,26 +302,31 @@ export async function createFollowUp(rawData: unknown): Promise<ActionResult<{ i
 
   const nextVisitDate = parseDate(parsed.data.nextVisitDate);
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const created = await tx.followUp.create({
-      data: {
-        medicalRecordId: parsed.data.medicalRecordId,
-        doctorId: actor.id,
-        nextVisitDate: nextVisitDate ?? null,
-        reminder: parsed.data.reminder?.trim() || null,
-        reason: parsed.data.reason?.trim() || null,
-        status: parsed.data.status?.trim() || 'SCHEDULED',
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.followUp.create({
+        data: {
+          medicalRecordId: parsed.data.medicalRecordId,
+          doctorId: actor.id,
+          nextVisitDate: nextVisitDate ?? null,
+          reminder: parsed.data.reminder?.trim() || null,
+          reason: parsed.data.reason?.trim() || null,
+          status: parsed.data.status?.trim() || 'SCHEDULED',
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'FollowUp', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return created;
     });
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'FollowUp', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return created;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('createFollowUp failed', { action: 'createFollowUp', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function getSlice3ClinicalData(medicalRecordId: string) {

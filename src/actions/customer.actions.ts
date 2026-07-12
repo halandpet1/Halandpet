@@ -4,6 +4,7 @@ import type { Prisma, UserRole } from '@prisma/client';
 import { db } from '@/lib/db';
 import { customerSchema, customerUpdateSchema, petSchema, petUpdateSchema, speciesSchema, breedSchema, colorSchema } from '@/validators/customer.schema';
 import { parseOrFail, revalidateCustomerViews, requireRole, type ActionResult } from '@/lib/action-utils';
+import { logger } from '@/lib/logger';
 
 const customerCreateRoles: UserRole[] = ['OWNER', 'ADMIN'];
 const petCreateRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR'];
@@ -27,35 +28,40 @@ export async function createCustomer(rawData: unknown): Promise<ActionResult<{ i
   const parsed = await parseOrFail(customerSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const customer = await db.$transaction(async (tx) => {
-    const created = await tx.customer.create({
-      data: {
-        ...parsed.data,
-        name: parsed.data.name.trim(),
-        phone: parsed.data.phone || null,
-        email: parsed.data.email || null,
-        address: parsed.data.address || null,
-        notes: parsed.data.notes || null,
-        isWalkIn: parsed.data.isWalkIn ?? false,
-        createdBy: actor.id,
-      },
+  try {
+    const customer = await db.$transaction(async (tx) => {
+      const created = await tx.customer.create({
+        data: {
+          ...parsed.data,
+          name: parsed.data.name.trim(),
+          phone: parsed.data.phone || null,
+          email: parsed.data.email || null,
+          address: parsed.data.address || null,
+          notes: parsed.data.notes || null,
+          isWalkIn: parsed.data.isWalkIn ?? false,
+          createdBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'CREATE',
+          entity: 'Customer',
+          entityId: created.id,
+          changes: parsed.data as Prisma.InputJsonValue,
+        },
+      });
+
+      return created;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'CREATE',
-        entity: 'Customer',
-        entityId: created.id,
-        changes: parsed.data as Prisma.InputJsonValue,
-      },
-    });
-
-    return created;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: customer.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: customer.id } };
+  } catch (error) {
+    logger.error('createCustomer failed', { action: 'createCustomer', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function updateCustomer(id: string, rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -67,34 +73,39 @@ export async function updateCustomer(id: string, rawData: unknown): Promise<Acti
   const parsed = await parseOrFail(customerUpdateSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const customer = await db.$transaction(async (tx) => {
-    const updated = await tx.customer.update({
-      where: { id },
-      data: {
-        ...parsed.data,
-        phone: parsed.data.phone || null,
-        email: parsed.data.email || null,
-        address: parsed.data.address || null,
-        notes: parsed.data.notes || null,
-        updatedBy: actor.id,
-      },
+  try {
+    const customer = await db.$transaction(async (tx) => {
+      const updated = await tx.customer.update({
+        where: { id },
+        data: {
+          ...parsed.data,
+          phone: parsed.data.phone || null,
+          email: parsed.data.email || null,
+          address: parsed.data.address || null,
+          notes: parsed.data.notes || null,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'UPDATE',
+          entity: 'Customer',
+          entityId: updated.id,
+          changes: parsed.data as Prisma.InputJsonValue,
+        },
+      });
+
+      return updated;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'UPDATE',
-        entity: 'Customer',
-        entityId: updated.id,
-        changes: parsed.data as Prisma.InputJsonValue,
-      },
-    });
-
-    return updated;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: customer.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: customer.id } };
+  } catch (error) {
+    logger.error('updateCustomer failed', { action: 'updateCustomer', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function softDeleteCustomer(id: string): Promise<ActionResult<{ id: string }>> {
@@ -103,28 +114,33 @@ export async function softDeleteCustomer(id: string): Promise<ActionResult<{ id:
   const actor = await assertRole(customerCreateRoles);
   if (!actor) return { success: false, error: 'Tidak diizinkan' };
 
-  const deletedAt = new Date();
-  const customer = await db.$transaction(async (tx) => {
-    const updated = await tx.customer.update({
-      where: { id },
-      data: { deletedAt, updatedBy: actor.id },
+  try {
+    const deletedAt = new Date();
+    const customer = await db.$transaction(async (tx) => {
+      const updated = await tx.customer.update({
+        where: { id },
+        data: { deletedAt, updatedBy: actor.id },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'SOFT_DELETE',
+          entity: 'Customer',
+          entityId: updated.id,
+          changes: { deletedAt } as Prisma.InputJsonValue,
+        },
+      });
+
+      return updated;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'SOFT_DELETE',
-        entity: 'Customer',
-        entityId: updated.id,
-        changes: { deletedAt } as Prisma.InputJsonValue,
-      },
-    });
-
-    return updated;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: customer.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: customer.id } };
+  } catch (error) {
+    logger.error('softDeleteCustomer failed', { action: 'softDeleteCustomer', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function restoreCustomer(id: string): Promise<ActionResult<{ id: string }>> {

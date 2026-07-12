@@ -104,12 +104,25 @@ export async function POST(request: Request) {
     },
   });
 
+  const customerUser = await db.user.create({
+    data: {
+      username: 'customer',
+      pinHash: await hashPin(seedPin),
+      fullName: 'Walk-In Customer',
+      role: 'CUSTOMER',
+      mustChangePin: false,
+    },
+  });
+
   await db.customer.create({
     data: {
       name: 'Walk-In Customer',
       phone: '081111111111',
+      email: 'customer@example.com',
+      address: 'Bandung, Indonesia',
       notes: 'Default walk-in customer',
       isWalkIn: true,
+      userId: customerUser.id,
       createdBy: owner.id,
     },
   });

@@ -11,11 +11,15 @@ const verifyPinMock = vi.hoisted(() => vi.fn());
 const setSessionCookieMock = vi.hoisted(() => vi.fn());
 const checkRateLimitMock = vi.hoisted(() => vi.fn());
 const getSessionUserMock = vi.hoisted(() => vi.fn());
+const ensureDevelopmentSeedMock = vi.hoisted(() => vi.fn());
+const getDevelopmentAuthUserMock = vi.hoisted(() => vi.fn());
+const verifyDevelopmentPinMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/auth', () => ({ hashPin: vi.fn(), verifyPin: verifyPinMock }));
 vi.mock('@/lib/session', () => ({ setSessionCookie: setSessionCookieMock, getSessionUser: getSessionUserMock }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: checkRateLimitMock }));
+vi.mock('@/lib/dev-auth', () => ({ ensureDevelopmentSeed: ensureDevelopmentSeedMock, getDevelopmentAuthUser: getDevelopmentAuthUserMock, verifyDevelopmentPin: verifyDevelopmentPinMock }));
 vi.mock('next/navigation', () => ({ redirect: (path: string) => { throw new Error(`redirect:${path}`); } }));
 
 import { changePinAction, loginAction } from './auth.actions';
@@ -23,6 +27,7 @@ import { changePinAction, loginAction } from './auth.actions';
 describe('loginAction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.NODE_ENV = 'test';
   });
 
   it('sets a session cookie and redirects after a successful login', async () => {
@@ -81,6 +86,24 @@ describe('loginAction', () => {
     if (result.success && result.data) {
       expect(result.data.mustChangePin).toBe(true);
     }
+  });
+
+  it('falls back to development seed users when no database user is found in non-production', async () => {
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'development',
+      configurable: true,
+    });
+    dbMock.user.findFirst.mockResolvedValue(null);
+    ensureDevelopmentSeedMock.mockResolvedValue({ id: 'dev-owner' });
+    getDevelopmentAuthUserMock.mockResolvedValue({ id: 'dev-owner', pinHash: 'hashed-pin', role: 'OWNER', fullName: 'Owner HaLand', mustChangePin: false });
+    verifyDevelopmentPinMock.mockResolvedValue(true);
+    checkRateLimitMock.mockResolvedValue({ allowed: true, remaining: 4, retryAfterMs: 0 });
+
+    const result = await loginAction({ username: 'owner', pin: '123456' });
+
+    expect(result.success).toBe(true);
+    expect(ensureDevelopmentSeedMock).toHaveBeenCalled();
+    expect(getDevelopmentAuthUserMock).toHaveBeenCalledWith('owner');
   });
 
   it('changes the PIN only after validating the current one', async () => {

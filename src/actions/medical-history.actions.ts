@@ -3,6 +3,7 @@
 import type { Prisma, UserRole } from '@prisma/client';
 import { db } from '@/lib/db';
 import { parseOrFail, revalidateCustomerViews, requireRole, type ActionResult } from '@/lib/action-utils';
+import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
 const allowedRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF', 'CUSTOMER'];
@@ -109,35 +110,40 @@ export async function createVaccination(rawData: unknown): Promise<ActionResult<
     return { success: false, error: 'Tanggal vaksinasi tidak valid', fieldErrors: { date: ['Tanggal vaksinasi tidak valid'] } };
   }
 
-  const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const created = await tx.vaccinationRecord.create({
-      data: {
-        petId,
-        vaccineName: parsed.data.vaccineName.trim(),
-        date: parsedDate,
-        nextDueDate: nextDueDate ?? null,
-        batchNumber: parsed.data.batchNumber?.trim() || null,
-        veterinarian: parsed.data.veterinarian?.trim() || null,
-        notes: parsed.data.notes?.trim() || null,
-        createdBy: actor.id,
-      },
+  try {
+    const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.vaccinationRecord.create({
+        data: {
+          petId,
+          vaccineName: parsed.data.vaccineName.trim(),
+          date: parsedDate,
+          nextDueDate: nextDueDate ?? null,
+          batchNumber: parsed.data.batchNumber?.trim() || null,
+          veterinarian: parsed.data.veterinarian?.trim() || null,
+          notes: parsed.data.notes?.trim() || null,
+          createdBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'CREATE',
+          entity: 'VaccinationRecord',
+          entityId: created.id,
+          changes: parsed.data as Prisma.InputJsonValue,
+        },
+      });
+
+      return created;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'CREATE',
-        entity: 'VaccinationRecord',
-        entityId: created.id,
-        changes: parsed.data as Prisma.InputJsonValue,
-      },
-    });
-
-    return created;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: item.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: item.id } };
+  } catch (error) {
+    logger.error('createVaccination failed', { action: 'createVaccination', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function updateVaccination(id: string, rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -162,36 +168,41 @@ export async function updateVaccination(id: string, rawData: unknown): Promise<A
     return { success: false, error: 'Data vaksinasi tidak ditemukan' };
   }
 
-  const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.vaccinationRecord.update({
-      where: { id },
-      data: {
-        petId,
-        vaccineName: parsed.data.vaccineName.trim(),
-        date: parsedDate,
-        nextDueDate: nextDueDate ?? null,
-        batchNumber: parsed.data.batchNumber?.trim() || null,
-        veterinarian: parsed.data.veterinarian?.trim() || null,
-        notes: parsed.data.notes?.trim() || null,
-        updatedBy: actor.id,
-      },
+  try {
+    const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.vaccinationRecord.update({
+        where: { id },
+        data: {
+          petId,
+          vaccineName: parsed.data.vaccineName.trim(),
+          date: parsedDate,
+          nextDueDate: nextDueDate ?? null,
+          batchNumber: parsed.data.batchNumber?.trim() || null,
+          veterinarian: parsed.data.veterinarian?.trim() || null,
+          notes: parsed.data.notes?.trim() || null,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'UPDATE',
+          entity: 'VaccinationRecord',
+          entityId: updated.id,
+          changes: parsed.data as Prisma.InputJsonValue,
+        },
+      });
+
+      return updated;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'UPDATE',
-        entity: 'VaccinationRecord',
-        entityId: updated.id,
-        changes: parsed.data as Prisma.InputJsonValue,
-      },
-    });
-
-    return updated;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: item.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: item.id } };
+  } catch (error) {
+    logger.error('updateVaccination failed', { action: 'updateVaccination', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function softDeleteVaccination(id: string): Promise<ActionResult<{ id: string }>> {
@@ -205,14 +216,19 @@ export async function softDeleteVaccination(id: string): Promise<ActionResult<{ 
   const petId = await ensurePetAccess(actor, existing.petId);
   if (!petId) return { success: false, error: 'Tidak diizinkan' };
 
-  const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.vaccinationRecord.update({ where: { id }, data: { deletedAt: new Date(), updatedBy: actor.id } });
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'SOFT_DELETE', entity: 'VaccinationRecord', entityId: updated.id, changes: { deletedAt: updated.deletedAt } as Prisma.InputJsonValue } });
-    return updated;
-  });
+  try {
+    const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.vaccinationRecord.update({ where: { id }, data: { deletedAt: new Date(), updatedBy: actor.id } });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'SOFT_DELETE', entity: 'VaccinationRecord', entityId: updated.id, changes: { deletedAt: updated.deletedAt } as Prisma.InputJsonValue } });
+      return updated;
+    });
 
-  await revalidateCustomerViews();
-  return { success: true, data: { id: item.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: item.id } };
+  } catch (error) {
+    logger.error('softDeleteVaccination failed', { action: 'softDeleteVaccination', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function createWeight(rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -230,23 +246,28 @@ export async function createWeight(rawData: unknown): Promise<ActionResult<{ id:
     return { success: false, error: 'Tanggal berat badan tidak valid', fieldErrors: { date: ['Tanggal berat badan tidak valid'] } };
   }
 
-  const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const created = await tx.weightHistory.create({
-      data: {
-        petId,
-        date: parsedDate,
-        weight: parsed.data.weight,
-        notes: parsed.data.notes?.trim() || null,
-        createdBy: actor.id,
-      },
+  try {
+    const item = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.weightHistory.create({
+        data: {
+          petId,
+          date: parsedDate,
+          weight: parsed.data.weight,
+          notes: parsed.data.notes?.trim() || null,
+          createdBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'WeightHistory', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return created;
     });
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'WeightHistory', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return created;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: item.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: item.id } };
+  } catch (error) {
+    logger.error('createWeight failed', { action: 'createWeight', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function updateWeight(id: string, rawData: unknown): Promise<ActionResult<{ id: string }>> {

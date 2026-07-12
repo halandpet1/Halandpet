@@ -4,6 +4,7 @@ import type { Prisma, UserRole } from '@prisma/client';
 import { db } from '@/lib/db';
 import { appointmentSchema, medicalRecordSchema } from '@/validators/clinical.schema';
 import { parseOrFail, revalidateCustomerViews, requireRole, type ActionResult } from '@/lib/action-utils';
+import { logger } from '@/lib/logger';
 
 const appointmentRoles: UserRole[] = ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'];
 const medicalRecordRoles: UserRole[] = ['OWNER', 'DOCTOR'];
@@ -41,35 +42,40 @@ export async function createAppointment(rawData: unknown): Promise<ActionResult<
     return { success: false, error: 'Tanggal janji tidak valid', fieldErrors: { appointmentDate: ['Tanggal janji tidak valid'] } };
   }
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const appointment = await tx.appointment.create({
-      data: {
-        customerId: parsed.data.customerId,
-        petId: parsed.data.petId,
-        doctorId: parsed.data.doctorId || null,
-        appointmentDate,
-        status: parsed.data.status ?? 'SCHEDULED',
-        notes: parsed.data.notes?.trim() || null,
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const appointment = await tx.appointment.create({
+        data: {
+          customerId: parsed.data.customerId,
+          petId: parsed.data.petId,
+          doctorId: parsed.data.doctorId || null,
+          appointmentDate,
+          status: parsed.data.status ?? 'SCHEDULED',
+          notes: parsed.data.notes?.trim() || null,
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'CREATE',
+          entity: 'Appointment',
+          entityId: appointment.id,
+          changes: parsed.data as Prisma.InputJsonValue,
+        },
+      });
+
+      return appointment;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'CREATE',
-        entity: 'Appointment',
-        entityId: appointment.id,
-        changes: parsed.data as Prisma.InputJsonValue,
-      },
-    });
-
-    return appointment;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('createAppointment failed', { action: 'createAppointment', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function updateAppointment(id: string, rawData: unknown): Promise<ActionResult<{ id: string }>> {
@@ -89,35 +95,40 @@ export async function updateAppointment(id: string, rawData: unknown): Promise<A
   const existing = await db.appointment.findFirst({ where: { id, deletedAt: null }, select: { id: true } });
   if (!existing) return { success: false, error: 'Janji temu tidak ditemukan' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const appointment = await tx.appointment.update({
-      where: { id },
-      data: {
-        customerId: parsed.data.customerId,
-        petId: parsed.data.petId,
-        doctorId: parsed.data.doctorId || null,
-        appointmentDate,
-        status: parsed.data.status ?? 'SCHEDULED',
-        notes: parsed.data.notes?.trim() || null,
-        updatedBy: actor.id,
-      },
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const appointment = await tx.appointment.update({
+        where: { id },
+        data: {
+          customerId: parsed.data.customerId,
+          petId: parsed.data.petId,
+          doctorId: parsed.data.doctorId || null,
+          appointmentDate,
+          status: parsed.data.status ?? 'SCHEDULED',
+          notes: parsed.data.notes?.trim() || null,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'UPDATE',
+          entity: 'Appointment',
+          entityId: appointment.id,
+          changes: parsed.data as Prisma.InputJsonValue,
+        },
+      });
+
+      return appointment;
     });
 
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'UPDATE',
-        entity: 'Appointment',
-        entityId: appointment.id,
-        changes: parsed.data as Prisma.InputJsonValue,
-      },
-    });
-
-    return appointment;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('updateAppointment failed', { action: 'updateAppointment', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function softDeleteAppointment(id: string): Promise<ActionResult<{ id: string }>> {
@@ -129,14 +140,19 @@ export async function softDeleteAppointment(id: string): Promise<ActionResult<{ 
   const existing = await db.appointment.findFirst({ where: { id, deletedAt: null }, select: { id: true } });
   if (!existing) return { success: false, error: 'Janji temu tidak ditemukan' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const appointment = await tx.appointment.update({ where: { id }, data: { deletedAt: new Date(), updatedBy: actor.id } });
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'SOFT_DELETE', entity: 'Appointment', entityId: appointment.id, changes: { deletedAt: appointment.deletedAt } as Prisma.InputJsonValue } });
-    return appointment;
-  });
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const appointment = await tx.appointment.update({ where: { id }, data: { deletedAt: new Date(), updatedBy: actor.id } });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'SOFT_DELETE', entity: 'Appointment', entityId: appointment.id, changes: { deletedAt: appointment.deletedAt } as Prisma.InputJsonValue } });
+      return appointment;
+    });
 
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('softDeleteAppointment failed', { action: 'softDeleteAppointment', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function listAppointments(params?: { page?: number; pageSize?: number; search?: string; status?: string }) {
@@ -202,36 +218,41 @@ export async function createMedicalRecord(rawData: unknown): Promise<ActionResul
   const existing = await db.medicalRecord.findFirst({ where: { appointmentId: appointment.id }, select: { id: true } });
   if (existing) return { success: false, error: 'Rekam medis sudah ada untuk appointment ini' };
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const medicalRecord = await tx.medicalRecord.create({
-      data: {
-        appointmentId: appointment.id,
-        customerId: appointment.customerId,
-        doctorId: actor.id,
-        notes: parsed.data.notes?.trim() || null,
-        status: parsed.data.status?.trim() || 'OPEN',
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
+  try {
+    const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const medicalRecord = await tx.medicalRecord.create({
+        data: {
+          appointmentId: appointment.id,
+          customerId: appointment.customerId,
+          doctorId: actor.id,
+          notes: parsed.data.notes?.trim() || null,
+          status: parsed.data.status?.trim() || 'OPEN',
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
+
+      await tx.appointment.update({ where: { id: appointment.id }, data: { status: 'CONSULTING', updatedBy: actor.id } });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'CREATE',
+          entity: 'MedicalRecord',
+          entityId: medicalRecord.id,
+          changes: parsed.data as Prisma.InputJsonValue,
+        },
+      });
+
+      return medicalRecord;
     });
 
-    await tx.appointment.update({ where: { id: appointment.id }, data: { status: 'CONSULTING', updatedBy: actor.id } });
-
-    await tx.auditLog.create({
-      data: {
-        userId: actor.id,
-        action: 'CREATE',
-        entity: 'MedicalRecord',
-        entityId: medicalRecord.id,
-        changes: parsed.data as Prisma.InputJsonValue,
-      },
-    });
-
-    return medicalRecord;
-  });
-
-  await revalidateCustomerViews();
-  return { success: true, data: { id: result.id } };
+    await revalidateCustomerViews();
+    return { success: true, data: { id: result.id } };
+  } catch (error) {
+    logger.error('createMedicalRecord failed', { action: 'createMedicalRecord', error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
 }
 
 export async function getMedicalRecordByAppointmentId(appointmentId: string) {

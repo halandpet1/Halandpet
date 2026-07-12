@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 import { canAccessRoute, getRoleRedirectPath } from '@/lib/role-access';
 
-const publicPaths = ['/login', '/api/auth/login', '/api/health', '/api/live', '/api/ready'];
+const publicPaths = ['/login', '/api/auth/login', '/api/health', '/api/live', '/api/ready', '/api/seed'];
 
 function applySecurityHeaders(response: Response) {
   response.headers.set('x-frame-options', 'DENY');

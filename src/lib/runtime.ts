@@ -3,7 +3,7 @@ export function validateProductionEnvironment() {
     return;
   }
 
-  const requiredKeys = ['DATABASE_URL', 'SESSION_SECRET', 'NEXTAUTH_SECRET'];
+  const requiredKeys = ['DATABASE_URL', 'SESSION_SECRET'];
   const missing = requiredKeys.filter((key) => !process.env[key]?.trim());
 
   if (missing.length > 0) {
@@ -14,7 +14,4 @@ export function validateProductionEnvironment() {
     throw new Error('SESSION_SECRET must be at least 32 characters in production');
   }
 
-  if (process.env.NEXTAUTH_SECRET && process.env.NEXTAUTH_SECRET.length < 32) {
-    throw new Error('NEXTAUTH_SECRET must be at least 32 characters in production');
-  }
 }

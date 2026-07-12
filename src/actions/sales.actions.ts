@@ -57,17 +57,22 @@ async function incrementBatchStock(tx: Prisma.TransactionClient, batchId: string
 async function createInvoiceNumber(tx: Prisma.TransactionClient) {
   const now = new Date();
   const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const sequenceClient = (tx as Prisma.TransactionClient & { invoiceSequence?: { findUnique: (args: { where: { yearMonth: string } }) => Promise<{ nextNumber: number } | null>; upsert: (args: { where: { yearMonth: string }; update: { nextNumber: number }; create: { yearMonth: string; nextNumber: number } }) => Promise<unknown> } }).invoiceSequence;
+  const sequenceClient = (tx as Prisma.TransactionClient & {
+    invoiceSequence?: {
+      findUnique: (args: { where: { yearMonth: string } }) => Promise<{ nextNumber: number } | null>;
+      upsert: (args: { where: { yearMonth: string }; update: { nextNumber: number }; create: { yearMonth: string; nextNumber: number } }) => Promise<unknown>;
+    };
+  }).invoiceSequence;
 
   if (sequenceClient?.findUnique && sequenceClient?.upsert) {
     const sequence = await sequenceClient.findUnique({ where: { yearMonth } });
-    const nextNumber = sequence ? sequence.nextNumber : 1;
-    const invoiceNo = `INV-${yearMonth}-${String(nextNumber).padStart(5, '0')}`;
+    const nextNumber = (sequence?.nextNumber ?? 1) + 1;
+    const invoiceNo = `INV-${yearMonth}-${String(nextNumber - 1).padStart(5, '0')}`;
 
     await sequenceClient.upsert({
       where: { yearMonth },
-      update: { nextNumber: nextNumber + 1 },
-      create: { yearMonth, nextNumber: nextNumber + 1 },
+      update: { nextNumber },
+      create: { yearMonth, nextNumber },
     });
 
     return invoiceNo;

@@ -1,11 +1,41 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const dbMock = vi.hoisted(() => {
+  const store = new Map<string, { id: string; count: number; resetAt: Date }>();
+
+  return {
+    store,
+    rateLimitEntry: {
+      findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
+        const entry = store.get(where.key);
+        return entry ? { id: entry.id, count: entry.count, resetAt: entry.resetAt } : null;
+      }),
+      upsert: vi.fn(async ({ where, update, create }: { where: { key: string }; update: { count: number; resetAt: Date }; create: { key: string; count: number; resetAt: Date } }) => {
+        store.set(where.key, { id: where.key, count: update.count, resetAt: update.resetAt });
+        return { id: where.key, count: create.count, resetAt: create.resetAt };
+      }),
+      update: vi.fn(async ({ where, data }: { where: { key: string }; data: { count: number } }) => {
+        const existing = store.get(where.key);
+        if (!existing) return { id: where.key };
+        store.set(where.key, { ...existing, count: data.count });
+        return { id: where.key, count: data.count, resetAt: existing.resetAt };
+      }),
+      delete: vi.fn(async ({ where }: { where: { key: string } }) => {
+        store.delete(where.key);
+        return { id: where.key };
+      }),
+    },
+  };
+});
+
+vi.mock('@/lib/db', () => ({ db: dbMock }));
+
 import { checkRateLimit, clearRateLimit } from './rate-limit';
 
 describe('checkRateLimit', () => {
   beforeEach(async () => {
+    dbMock.store.clear();
+    vi.clearAllMocks();
     await clearRateLimit('test-key');
     await clearRateLimit('object-key');
     await clearRateLimit('persisted-key');
@@ -39,11 +69,7 @@ describe('checkRateLimit', () => {
     expect(second.allowed).toBe(false);
   });
 
-  it('persists rate-limit state across module reloads when a file store is configured', async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), 'rate-limit-'));
-    const storePath = path.join(tempDir, 'store.json');
-
-    process.env.RATE_LIMIT_STORE_FILE = storePath;
+  it('persists rate-limit state across module reloads', async () => {
     vi.resetModules();
 
     const { checkRateLimit: reloadedCheckRateLimit } = await import('./rate-limit');
@@ -51,13 +77,8 @@ describe('checkRateLimit', () => {
 
     expect(first.allowed).toBe(true);
 
-    vi.resetModules();
-    const { checkRateLimit: reloadedCheckRateLimitAgain } = await import('./rate-limit');
-    const second = await reloadedCheckRateLimitAgain('persisted-key', { max: 1, windowMs: 60_000 });
+    const second = await reloadedCheckRateLimit('persisted-key', { max: 1, windowMs: 60_000 });
 
     expect(second.allowed).toBe(false);
-
-    delete process.env.RATE_LIMIT_STORE_FILE;
-    await rm(tempDir, { recursive: true, force: true });
   });
 });
