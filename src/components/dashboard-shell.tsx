@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { UserRole } from '@prisma/client';
 import {
   Activity,
   BarChart3,
@@ -23,23 +24,33 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: Home },
-  { href: '/portal', label: 'Portal Pelanggan', icon: UserCircle2 },
-  { href: '/customers', label: 'Pelanggan', icon: Users },
-  { href: '/clinical', label: 'Klinis', icon: Stethoscope },
-  { href: '/inventory', label: 'Inventaris', icon: Boxes },
-  { href: '/pos', label: 'POS', icon: ShoppingCart },
-  { href: '/hotel', label: 'Pet Hotel', icon: Hotel },
-  { href: '/reports', label: 'Laporan', icon: BarChart3 },
-  { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/monitoring', label: 'Monitoring', icon: Activity },
-  { href: '/admin', label: 'Administrasi', icon: ShieldCheck },
+const baseNavItems = [
+  { href: '/dashboard', label: 'Dashboard', icon: Home, roles: ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF', 'CUSTOMER'] as UserRole[] },
+  { href: '/portal', label: 'Portal Pelanggan', icon: UserCircle2, roles: ['CUSTOMER'] as UserRole[] },
+  { href: '/customers', label: 'Pelanggan', icon: Users, roles: ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'] as UserRole[] },
+  { href: '/clinical', label: 'Klinis', icon: Stethoscope, roles: ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'] as UserRole[] },
+  { href: '/inventory', label: 'Inventaris', icon: Boxes, roles: ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'] as UserRole[] },
+  { href: '/pos', label: 'POS', icon: ShoppingCart, roles: ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'] as UserRole[] },
+  { href: '/hotel', label: 'Pet Hotel', icon: Hotel, roles: ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'] as UserRole[] },
+  { href: '/reports', label: 'Laporan', icon: BarChart3, roles: ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'] as UserRole[] },
+  { href: '/settings', label: 'Settings', icon: Settings, roles: ['OWNER', 'ADMIN'] as UserRole[] },
+  { href: '/monitoring', label: 'Monitoring', icon: Activity, roles: ['OWNER', 'ADMIN'] as UserRole[] },
+  { href: '/admin', label: 'Administrasi', icon: ShieldCheck, roles: ['OWNER', 'ADMIN'] as UserRole[] },
 ];
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [role, setRole] = useState<UserRole>('OWNER');
+
+  useEffect(() => {
+    const storedRole = window.sessionStorage.getItem('haland-role') as UserRole | null;
+    if (storedRole) {
+      setRole(storedRole);
+    }
+  }, []);
+
+  const navItems = baseNavItems.filter((item) => item.roles.includes(role));
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.16),_transparent_28%),linear-gradient(135deg,_#020617_0%,_#0f172a_100%)] text-slate-100">
@@ -110,8 +121,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   A
                 </div>
                 <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-white">Admin</p>
-                  <p className="text-xs text-slate-400">Operations</p>
+                  <p className="text-sm font-medium text-white">{role}</p>
+                  <p className="text-xs text-slate-400">{role === 'CUSTOMER' ? 'Customer Portal' : 'Operations'}</p>
                 </div>
               </div>
             </div>

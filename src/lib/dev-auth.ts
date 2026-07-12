@@ -18,6 +18,38 @@ const DEV_SEED = {
     pinHash: '',
     mustChangePin: true,
   },
+  admin: {
+    id: 'dev-admin',
+    username: 'admin',
+    fullName: 'Admin HaLand',
+    role: 'ADMIN' as const,
+    pinHash: '',
+    mustChangePin: false,
+  },
+  doctor: {
+    id: 'dev-doctor',
+    username: 'doctor',
+    fullName: 'Dr. HaLand',
+    role: 'DOCTOR' as const,
+    pinHash: '',
+    mustChangePin: false,
+  },
+  cashier: {
+    id: 'dev-cashier',
+    username: 'cashier',
+    fullName: 'Kasir HaLand',
+    role: 'CASHIER' as const,
+    pinHash: '',
+    mustChangePin: false,
+  },
+  staff: {
+    id: 'dev-staff',
+    username: 'staff',
+    fullName: 'Staff HaLand',
+    role: 'STAFF' as const,
+    pinHash: '',
+    mustChangePin: false,
+  },
   customer: {
     id: 'dev-customer',
     username: 'customer',
@@ -37,6 +69,10 @@ function isDevelopmentEnvironment() {
 async function hydratePinHashes() {
   if (!seeded) {
     DEV_SEED.owner.pinHash = await hashPin('123456');
+    DEV_SEED.admin.pinHash = await hashPin('123456');
+    DEV_SEED.doctor.pinHash = await hashPin('123456');
+    DEV_SEED.cashier.pinHash = await hashPin('123456');
+    DEV_SEED.staff.pinHash = await hashPin('123456');
     DEV_SEED.customer.pinHash = await hashPin('123456');
     seeded = true;
   }
@@ -62,6 +98,22 @@ export async function getDevelopmentAuthUser(username: string) {
     return DEV_SEED.owner;
   }
 
+  if (username === DEV_SEED.admin.username) {
+    return DEV_SEED.admin;
+  }
+
+  if (username === DEV_SEED.doctor.username) {
+    return DEV_SEED.doctor;
+  }
+
+  if (username === DEV_SEED.cashier.username) {
+    return DEV_SEED.cashier;
+  }
+
+  if (username === DEV_SEED.staff.username) {
+    return DEV_SEED.staff;
+  }
+
   if (username === DEV_SEED.customer.username) {
     return DEV_SEED.customer;
   }
@@ -81,5 +133,9 @@ export async function verifyDevelopmentPin(username: string, pin: string) {
 export function resetDevelopmentSeedForTests() {
   seeded = false;
   DEV_SEED.owner.pinHash = '';
+  DEV_SEED.admin.pinHash = '';
+  DEV_SEED.doctor.pinHash = '';
+  DEV_SEED.cashier.pinHash = '';
+  DEV_SEED.staff.pinHash = '';
   DEV_SEED.customer.pinHash = '';
 }

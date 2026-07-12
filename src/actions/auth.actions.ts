@@ -1,12 +1,12 @@
 'use server';
 
-import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { hashPin, verifyPin } from '@/lib/auth';
 import { setSessionCookie } from '@/lib/session';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { usernameSchema, pinSchema } from '@/validators/common.schema';
 import { ensureDevelopmentSeed, getDevelopmentAuthUser, verifyDevelopmentPin } from '@/lib/dev-auth';
+import { getRoleRedirectPath } from '@/lib/role-access';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -60,7 +60,14 @@ export async function loginAction(rawData: FormData | Record<string, unknown>) {
   }
 
   await setSessionCookie({ id: user.id, role: user.role, fullName: user.fullName });
-  redirect(user.role === 'CUSTOMER' ? '/portal' : '/');
+
+  return {
+    success: true,
+    data: {
+      redirectTo: getRoleRedirectPath(user.role),
+      role: user.role,
+    },
+  };
 }
 
 export async function createOwnerAction() {

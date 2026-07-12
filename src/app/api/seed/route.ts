@@ -27,7 +27,39 @@ export async function POST() {
       mustChangePin: true,
     },
   });
-
+  await db.user.createMany({
+    data: [
+      {
+        username: 'admin',
+        pinHash: await hashPin('123456'),
+        fullName: 'Admin HaLand',
+        role: 'ADMIN',
+        mustChangePin: false,
+      },
+      {
+        username: 'doctor',
+        pinHash: await hashPin('123456'),
+        fullName: 'Dr. HaLand',
+        role: 'DOCTOR',
+        mustChangePin: false,
+      },
+      {
+        username: 'cashier',
+        pinHash: await hashPin('123456'),
+        fullName: 'Kasir HaLand',
+        role: 'CASHIER',
+        mustChangePin: false,
+      },
+      {
+        username: 'staff',
+        pinHash: await hashPin('123456'),
+        fullName: 'Staff HaLand',
+        role: 'STAFF',
+        mustChangePin: false,
+      },
+    ],
+    skipDuplicates: true,
+  });
   await db.clinicSetting.create({
     data: {
       clinicName: 'HaLand PetCare',

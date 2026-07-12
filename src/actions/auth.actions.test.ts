@@ -35,7 +35,15 @@ describe('loginAction', () => {
     dbMock.user.update.mockResolvedValue({});
     checkRateLimitMock.mockResolvedValue({ allowed: true, remaining: 4, retryAfterMs: 0 });
 
-    await expect(loginAction({ username: 'owner', pin: '123456' })).rejects.toThrow('redirect:/dashboard');
+    const result = await loginAction({ username: 'owner', pin: '123456' });
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        redirectTo: '/dashboard',
+        role: 'OWNER',
+      },
+    });
 
     expect(setSessionCookieMock).toHaveBeenCalledWith({
       id: 'user-1',

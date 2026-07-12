@@ -52,27 +52,30 @@ export default function CustomerPortalProfileEditor({ customer }: { customer: Cu
       </CardHeader>
       <CardContent className="space-y-4">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <label className="block text-sm">
+          <label className="block text-sm" htmlFor="portal-name">
             <span className="mb-2 block">Nama</span>
             <input
+              id="portal-name"
               value={form.name}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2"
               placeholder="Nama lengkap"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm" htmlFor="portal-phone">
             <span className="mb-2 block">Telepon</span>
             <input
+              id="portal-phone"
               value={form.phone}
               onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2"
               placeholder="08xxxxxxxxxx"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm" htmlFor="portal-email">
             <span className="mb-2 block">Email</span>
             <input
+              id="portal-email"
               type="email"
               value={form.email}
               onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
@@ -80,9 +83,10 @@ export default function CustomerPortalProfileEditor({ customer }: { customer: Cu
               placeholder="nama@domain.com"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-sm" htmlFor="portal-address">
             <span className="mb-2 block">Alamat</span>
             <textarea
+              id="portal-address"
               value={form.address}
               onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
               className="w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2"

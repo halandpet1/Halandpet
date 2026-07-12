@@ -18,14 +18,21 @@ export function LoginForm() {
     const result = await loginAction(formData);
 
     if (!result.success) {
-      setError(result.error);
+      setError(result.error ?? 'Login gagal.');
       setPending(false);
       return;
     }
 
+    const redirectTo = result.data?.redirectTo ?? '/dashboard';
+    const role = result.data?.role;
+
+    if (role) {
+      window.sessionStorage.setItem('haland-role', role);
+    }
+
     setPending(false);
     router.refresh();
-    router.replace('/');
+    router.replace(redirectTo);
   }
 
   return (

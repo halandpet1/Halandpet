@@ -2,7 +2,8 @@
 
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
-import { parseOrFail, requireSessionUser, type ActionResult } from '@/lib/action-utils';
+import { parseOrFail, type ActionResult } from '@/lib/action-utils';
+import { getSessionUser } from '@/lib/session';
 import { z } from 'zod';
 
 type CustomerPortalCustomer = {
@@ -82,13 +83,29 @@ const profileSchema = z.object({
 });
 
 async function getPortalCustomerContext() {
-  if (!db) return null;
+  const sessionUser = await getSessionUser();
+  if (!sessionUser) return null;
 
-  const user = await requireSessionUser();
-  if (!user) return null;
+  if (!db) {
+    if (sessionUser.role !== 'CUSTOMER') return null;
+
+    return {
+      user: sessionUser,
+      customer: {
+        id: sessionUser.id,
+        name: sessionUser.fullName,
+        phone: null,
+        email: null,
+        address: null,
+        isWalkIn: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    };
+  }
 
   const customer = await db.customer.findFirst({
-    where: { userId: user.id, deletedAt: null },
+    where: { userId: sessionUser.id, deletedAt: null },
     select: {
       id: true,
       name: true,
@@ -101,15 +118,26 @@ async function getPortalCustomerContext() {
     },
   });
 
-  return customer ? { user, customer } : null;
+  return customer ? { user: sessionUser, customer } : null;
 }
 
 export async function getCustomerPortalOverview(): Promise<CustomerPortalResult> {
-  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
-
   const context = await getPortalCustomerContext();
   if (!context?.customer) {
     return { success: false, error: 'Akses portal pelanggan tidak tersedia' };
+  }
+
+  if (!db) {
+    return {
+      success: true,
+      data: {
+        customer: context.customer,
+        pets: [],
+        appointments: [],
+        invoices: [],
+        hotelBookings: [],
+      },
+    };
   }
 
   const [pets, appointments, invoices, hotelBookings] = await Promise.all([
@@ -158,8 +186,6 @@ export async function getCustomerPortalOverview(): Promise<CustomerPortalResult>
 }
 
 export async function updateCustomerPortalProfile(rawData: unknown): Promise<CustomerPortalResult> {
-  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
-
   const context = await getPortalCustomerContext();
   if (!context?.customer) {
     return { success: false, error: 'Akses portal pelanggan tidak tersedia' };
@@ -168,13 +194,33 @@ export async function updateCustomerPortalProfile(rawData: unknown): Promise<Cus
   const parsed = await parseOrFail(profileSchema, rawData);
   if (!parsed.success) return parsed;
 
+  const normalizedPayload = {
+    name: parsed.data.name?.trim() || context.customer.name,
+    phone: parsed.data.phone?.trim() || null,
+    email: parsed.data.email?.trim() || null,
+    address: parsed.data.address?.trim() || null,
+  };
+
+  if (!db) {
+    return {
+      success: true,
+      data: {
+        customer: {
+          ...context.customer,
+          ...normalizedPayload,
+        },
+        pets: [],
+        appointments: [],
+        invoices: [],
+        hotelBookings: [],
+      },
+    };
+  }
+
   const updated = await db.customer.update({
     where: { id: context.customer.id },
     data: {
-      name: parsed.data.name?.trim() || context.customer.name,
-      phone: parsed.data.phone?.trim() || null,
-      email: parsed.data.email?.trim() || null,
-      address: parsed.data.address?.trim() || null,
+      ...normalizedPayload,
       updatedAt: new Date(),
     },
   });
@@ -185,19 +231,39 @@ export async function updateCustomerPortalProfile(rawData: unknown): Promise<Cus
       action: 'UPDATE',
       entity: 'Customer',
       entityId: updated.id,
-      changes: parsed.data as Prisma.InputJsonValue,
+      changes: normalizedPayload as Prisma.InputJsonValue,
     },
   });
 
-  return { success: true, data: { customer: { ...context.customer, ...updated }, pets: [], appointments: [], invoices: [], hotelBookings: [] } };
+  return {
+    success: true,
+    data: {
+      customer: {
+        id: updated.id,
+        name: updated.name,
+        phone: updated.phone,
+        email: updated.email,
+        address: updated.address,
+        isWalkIn: updated.isWalkIn,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+      },
+      pets: [],
+      appointments: [],
+      invoices: [],
+      hotelBookings: [],
+    },
+  };
 }
 
 export async function getCustomerPortalReminders(): Promise<CustomerPortalReminderResult> {
-  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
-
   const context = await getPortalCustomerContext();
   if (!context?.customer) {
     return { success: false, error: 'Akses portal pelanggan tidak tersedia' };
+  }
+
+  if (!db) {
+    return { success: true, data: { reminders: [] } };
   }
 
   const now = new Date();
@@ -220,11 +286,13 @@ export async function getCustomerPortalReminders(): Promise<CustomerPortalRemind
 }
 
 export async function listCustomerNotifications(): Promise<CustomerPortalNotificationResult> {
-  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
-
   const context = await getPortalCustomerContext();
   if (!context?.customer) {
     return { success: false, error: 'Akses portal pelanggan tidak tersedia' };
+  }
+
+  if (!db) {
+    return { success: true, data: { items: [] } };
   }
 
   const items = await db.notification.findMany({
@@ -238,9 +306,15 @@ export async function listCustomerNotifications(): Promise<CustomerPortalNotific
 }
 
 export async function markCustomerNotificationRead(id: string): Promise<ActionResult<{ id: string }>> {
-  if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
-
   const context = await getPortalCustomerContext();
+  if (!context?.customer) {
+    return { success: false, error: 'Akses portal pelanggan tidak tersedia' };
+  }
+
+  if (!db) {
+    return { success: true, data: { id } };
+  }
+
   if (!context?.customer) {
     return { success: false, error: 'Akses portal pelanggan tidak tersedia' };
   }

@@ -83,23 +83,23 @@ export default async function CustomerPortalPage() {
           <div>
             <h3 className="text-sm font-semibold text-slate-300">Reminder</h3>
             <ul className="mt-3 space-y-2">
-              {reminders.map((reminder) => (
+              {reminders.length > 0 ? reminders.map((reminder) => (
                 <li key={reminder.id} className="rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm">
                   <p className="font-medium text-white">{reminder.title}</p>
                   <p className="mt-1 text-slate-400">{reminder.message}</p>
                 </li>
-              ))}
+              )) : <li className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/60 px-3 py-3 text-sm text-slate-400">Tidak ada reminder dalam 2 minggu ke depan.</li>}
             </ul>
           </div>
           <div>
             <h3 className="text-sm font-semibold text-slate-300">Notifikasi</h3>
             <ul className="mt-3 space-y-2">
-              {notifications.map((notification) => (
+              {notifications.length > 0 ? notifications.map((notification) => (
                 <li key={notification.id} className="rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm">
                   <p className="font-medium text-white">{notification.title}</p>
                   <p className="mt-1 text-slate-400">{notification.message}</p>
                 </li>
-              ))}
+              )) : <li className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/60 px-3 py-3 text-sm text-slate-400">Belum ada notifikasi terbaru.</li>}
             </ul>
           </div>
         </CardContent>
