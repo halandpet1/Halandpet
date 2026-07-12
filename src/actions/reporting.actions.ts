@@ -1,7 +1,6 @@
 'use server';
 
 import { db } from '@/lib/db';
-import type { UserRole } from '@prisma/client';
 import { parseOrFail, requireRole, type ActionResult } from '@/lib/action-utils';
 import { z } from 'zod';
 

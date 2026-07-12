@@ -4,6 +4,7 @@ export type RoleDashboardConfig = {
   title: string;
   subtitle: string;
   badge: string;
+  navigation: Array<{ href: string; label: string; description?: string }>;
   shortcuts: Array<{ href: string; label: string; description: string }>;
 };
 
@@ -40,8 +41,19 @@ export function getDashboardRoleConfig(role: UserRole): RoleDashboardConfig {
     case 'OWNER':
       return {
         title: 'Ringkasan operasional',
-        subtitle: 'Pantau kinerja klinik, pet hotel, dan bisnis dari satu dashboard eksekutif.',
+        subtitle: 'Pantau kinerja klinik, pet hotel, dan bisnis dari satu dashboard eksekutif yang kaya insight.',
         badge: 'Owner Overview',
+        navigation: [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/clinical', label: 'Clinical' },
+          { href: '/inventory', label: 'Inventory' },
+          { href: '/pos', label: 'POS' },
+          { href: '/hotel', label: 'Pet Hotel' },
+          { href: '/customers', label: 'Customer' },
+          { href: '/reports', label: 'Reports' },
+          { href: '/admin', label: 'Audit' },
+          { href: '/settings', label: 'Settings' },
+        ],
         shortcuts: [
           { href: '/admin', label: 'Administrasi', description: 'Kelola pengguna dan konfigurasi utama' },
           { href: '/customers', label: 'Pelanggan', description: 'Pantau customer, pet, dan aktivitas' },
@@ -53,6 +65,16 @@ export function getDashboardRoleConfig(role: UserRole): RoleDashboardConfig {
         title: 'Ringkasan operasional',
         subtitle: 'Kelola pelanggan, inventaris, dan data operasional harian secara terpusat.',
         badge: 'Admin Overview',
+        navigation: [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/customers', label: 'Customer' },
+          { href: '/pets', label: 'Pet' },
+          { href: '/clinical', label: 'Clinical' },
+          { href: '/inventory', label: 'Inventory' },
+          { href: '/pos', label: 'POS' },
+          { href: '/hotel', label: 'Hotel' },
+          { href: '/admin', label: 'Employee' },
+        ],
         shortcuts: [
           { href: '/customers', label: 'Pelanggan', description: 'Kelola data customer dan pet' },
           { href: '/inventory', label: 'Inventaris', description: 'Pantau stok dan restock' },
@@ -64,6 +86,15 @@ export function getDashboardRoleConfig(role: UserRole): RoleDashboardConfig {
         title: 'Dashboard klinis',
         subtitle: 'Fokus pada janji temu, rekam medis, dan pemantauan status pasien.',
         badge: 'Clinical Focus',
+        navigation: [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/clinical', label: 'Clinical' },
+          { href: '/medical-record', label: 'Medical Record' },
+          { href: '/prescription', label: 'Prescription' },
+          { href: '/laboratory', label: 'Laboratory' },
+          { href: '/vaccination', label: 'Vaccination' },
+          { href: '/customers', label: 'Customer' },
+        ],
         shortcuts: [
           { href: '/clinical', label: 'Klinis', description: 'Buka antrian dan rekam medis' },
           { href: '/customers', label: 'Pelanggan', description: 'Lihat data customer dan hewan' },
@@ -75,6 +106,14 @@ export function getDashboardRoleConfig(role: UserRole): RoleDashboardConfig {
         title: 'Dashboard POS',
         subtitle: 'Prioritaskan transaksi, pembayaran, dan status invoice yang sedang berjalan.',
         badge: 'POS Focus',
+        navigation: [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/pos', label: 'POS' },
+          { href: '/pos/invoice', label: 'Invoice' },
+          { href: '/pos/payment', label: 'Payment' },
+          { href: '/customers', label: 'Customer' },
+          { href: '/reports', label: 'Reports' },
+        ],
         shortcuts: [
           { href: '/pos', label: 'POS', description: 'Kelola transaksi dan pembayaran' },
           { href: '/reports', label: 'Laporan', description: 'Pantau performa penjualan' },
@@ -86,6 +125,13 @@ export function getDashboardRoleConfig(role: UserRole): RoleDashboardConfig {
         title: 'Dashboard operasional',
         subtitle: 'Bantu operasional inventaris, petshop, dan pet hotel harian.',
         badge: 'Staff Focus',
+        navigation: [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/inventory', label: 'Inventory' },
+          { href: '/hotel', label: 'Pet Hotel' },
+          { href: '/daily-task', label: 'Daily Task' },
+          { href: '/reports', label: 'Reports' },
+        ],
         shortcuts: [
           { href: '/inventory', label: 'Inventaris', description: 'Pantau stok dan barang masuk' },
           { href: '/hotel', label: 'Pet Hotel', description: 'Kelola booking dan check-in' },
@@ -98,6 +144,15 @@ export function getDashboardRoleConfig(role: UserRole): RoleDashboardConfig {
         title: 'Portal pelanggan',
         subtitle: 'Lihat profil, hewan peliharaan, janji temu, dan notifikasi pribadi.',
         badge: 'Customer Portal',
+        navigation: [
+          { href: '/portal', label: 'Dashboard' },
+          { href: '/pets', label: 'My Pets' },
+          { href: '/appointment', label: 'Appointment' },
+          { href: '/hotel', label: 'Hotel' },
+          { href: '/medical-history', label: 'Medical History' },
+          { href: '/invoice', label: 'Invoice' },
+          { href: '/profile', label: 'Profile' },
+        ],
         shortcuts: [
           { href: '/portal', label: 'Portal', description: 'Akses informasi pelanggan' },
         ],

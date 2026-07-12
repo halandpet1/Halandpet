@@ -2,17 +2,20 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { UserRole } from '@prisma/client';
 import {
   Activity,
+  BadgeCheck,
   BarChart3,
   Bell,
   Boxes,
   ChevronRight,
+  ClipboardList,
   Home,
   Hotel,
   Menu,
+  ReceiptText,
   ShoppingCart,
   ShieldCheck,
   Stethoscope,
@@ -22,7 +25,34 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getDashboardRoleConfig } from '@/lib/role-access';
 import { cn } from '@/lib/utils';
+
+const iconMap: Record<string, typeof Home> = {
+  '/dashboard': Home,
+  '/portal': UserCircle2,
+  '/customers': Users,
+  '/clinical': Stethoscope,
+  '/inventory': Boxes,
+  '/pos': ShoppingCart,
+  '/hotel': Hotel,
+  '/reports': BarChart3,
+  '/settings': Settings,
+  '/monitoring': Activity,
+  '/admin': ShieldCheck,
+  '/pets': Users,
+  '/medical-record': Stethoscope,
+  '/prescription': ClipboardList,
+  '/laboratory': Activity,
+  '/vaccination': BadgeCheck,
+  '/daily-task': ClipboardList,
+  '/appointment': Bell,
+  '/medical-history': Stethoscope,
+  '/invoice': ReceiptText,
+  '/profile': UserCircle2,
+  '/pos/invoice': ReceiptText,
+  '/pos/payment': ShoppingCart,
+};
 
 const baseNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home, roles: ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF', 'CUSTOMER'] as UserRole[] },
@@ -41,16 +71,55 @@ const baseNavItems = [
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [role, setRole] = useState<UserRole>('OWNER');
-
-  useEffect(() => {
-    const storedRole = window.sessionStorage.getItem('haland-role') as UserRole | null;
-    if (storedRole) {
-      setRole(storedRole);
+  const [role] = useState<UserRole>(() => {
+    if (typeof window === 'undefined') {
+      return 'OWNER';
     }
-  }, []);
 
+    return (window.sessionStorage.getItem('haland-role') as UserRole | null) ?? 'OWNER';
+  });
+
+  const roleConfig = getDashboardRoleConfig(role);
   const navItems = baseNavItems.filter((item) => item.roles.includes(role));
+  const extraNavItems = roleConfig.navigation
+    .filter((item) => !navItems.some((existing) => existing.href === item.href))
+    .map((item) => ({ ...item, icon: iconMap[item.href] ?? Home }));
+  const navigationItems = [...navItems, ...extraNavItems];
+
+  const breadcrumbItems = pathname === '/dashboard'
+    ? [{ href: '/dashboard', label: 'Dashboard' }]
+    : pathname
+        .split('/')
+        .filter(Boolean)
+        .reduce<Array<{ href: string; label: string }>>((acc, segment, index) => {
+          const href = `/${pathname.split('/').filter(Boolean).slice(0, index + 1).join('/')}`;
+          const labelMap: Record<string, string> = {
+            dashboard: 'Dashboard',
+            portal: 'Portal',
+            customers: 'Customers',
+            pets: 'My Pets',
+            clinical: 'Clinical',
+            inventory: 'Inventory',
+            pos: 'POS',
+            hotel: 'Hotel',
+            reports: 'Reports',
+            settings: 'Settings',
+            monitoring: 'Monitoring',
+            admin: 'Administration',
+            appointment: 'Appointment',
+            'medical-record': 'Medical Record',
+            prescription: 'Prescription',
+            laboratory: 'Laboratory',
+            vaccination: 'Vaccination',
+            'daily-task': 'Daily Task',
+            'medical-history': 'Medical History',
+            invoice: 'Invoice',
+            profile: 'Profile',
+            payment: 'Payment',
+          };
+          acc.push({ href, label: labelMap[segment] ?? segment.replace(/-/g, ' ') });
+          return acc;
+        }, []);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.16),_transparent_28%),linear-gradient(135deg,_#020617_0%,_#0f172a_100%)] text-slate-100">
@@ -71,7 +140,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="space-y-1.5">
-          {navItems.map((item) => {
+          {navigationItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
@@ -106,7 +175,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 <Menu className="h-4 w-4" />
               </Button>
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Operasional</p>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-400">{role === 'CUSTOMER' ? 'Portal' : 'Operasional'}</p>
                 <h2 className="text-lg font-semibold text-white">Panel utama</h2>
               </div>
             </div>
@@ -130,7 +199,23 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl space-y-8">{children}</div>
+          <div className="mx-auto max-w-7xl space-y-6">
+            <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+              {breadcrumbItems.map((item, index) => (
+                <div key={item.href} className="flex items-center gap-2">
+                  {index > 0 ? <ChevronRight className="h-3.5 w-3.5" /> : null}
+                  {index === breadcrumbItems.length - 1 ? (
+                    <span className="text-white">{item.label}</span>
+                  ) : (
+                    <Link href={item.href} className="transition hover:text-white">
+                      {item.label}
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </nav>
+            <div className="space-y-8">{children}</div>
+          </div>
         </main>
       </div>
 

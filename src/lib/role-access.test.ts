@@ -21,10 +21,13 @@ describe('role access helpers', () => {
   it('builds role-specific dashboard guidance for each role', () => {
     const doctorConfig = getDashboardRoleConfig('DOCTOR');
     const cashierConfig = getDashboardRoleConfig('CASHIER');
+    const ownerConfig = getDashboardRoleConfig('OWNER');
 
     expect(doctorConfig.title).toContain('Dashboard');
     expect(doctorConfig.shortcuts.some((shortcut) => shortcut.href === '/clinical')).toBe(true);
+    expect(doctorConfig.navigation.some((item) => item.href === '/medical-record')).toBe(true);
     expect(cashierConfig.title).toContain('POS');
     expect(cashierConfig.shortcuts.some((shortcut) => shortcut.href === '/pos')).toBe(true);
+    expect(ownerConfig.navigation.some((item) => item.href === '/reports')).toBe(true);
   });
 });

@@ -2,7 +2,15 @@ import { db } from '@/lib/db';
 
 export default async function AdminPage() {
   if (!db || process.env.NEXT_PHASE === 'phase-production-build') {
-    return <div className="rounded-2xl border border-white/10 bg-slate-900 p-6">Database belum dikonfigurasi.</div>;
+    return (
+      <div className="space-y-6">
+        <div>
+          <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Administrasi</p>
+          <h1 className="text-3xl font-semibold">Manajemen pengguna</h1>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-slate-900 p-6">Database belum dikonfigurasi. Panel administrasi menunggu koneksi database.</div>
+      </div>
+    );
   }
 
   const users = await db.user.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 10 });

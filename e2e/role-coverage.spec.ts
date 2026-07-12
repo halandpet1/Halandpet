@@ -11,7 +11,7 @@ test.describe('core role coverage', () => {
     await page.goto('/admin');
     await expect(page.getByText(/manajemen pengguna/i)).toBeVisible();
     await page.goto('/reports');
-    await expect(page.getByText(/laporan/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /laporan enterprise/i })).toBeVisible();
   });
 
   test('staff can reach inventory and hotel screens', async ({ page }) => {

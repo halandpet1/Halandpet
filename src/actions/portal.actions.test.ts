@@ -21,7 +21,7 @@ const getSessionUserMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/session', () => ({ getSessionUser: getSessionUserMock }));
 
-import { getCustomerPortalOverview, getCustomerPortalReminders, listCustomerNotifications, markCustomerNotificationRead, updateCustomerPortalProfile } from './portal.actions';
+import { getCustomerPortalOverview, getCustomerPortalReminders, listCustomerNotifications, markCustomerNotificationRead } from './portal.actions';
 
 describe('portal actions', () => {
   beforeEach(() => {
