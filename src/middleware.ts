@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSessionUser } from '@/lib/session';
 import { canAccessRoute, getRoleRedirectPath } from '@/lib/role-access';
 
-const publicPaths = ['/login', '/api/auth/login', '/api/health', '/api/live', '/api/ready', '/api/seed'];
+const publicPaths = ['/login', '/api/auth/login', '/api/health', '/api/live', '/api/ready'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

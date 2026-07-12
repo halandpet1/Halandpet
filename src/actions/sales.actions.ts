@@ -38,6 +38,28 @@ async function createInvoiceNumber(tx: Prisma.TransactionClient) {
   return `INV-${yearMonth}-${String(counter).padStart(5, '0')}`;
 }
 
+async function resolveWalkInCustomer(tx: Prisma.TransactionClient, actorId: string) {
+  const existingWalkIn = await tx.customer.findFirst({ where: { isWalkIn: true, deletedAt: null }, select: { id: true } });
+  if (existingWalkIn?.id) {
+    return existingWalkIn.id;
+  }
+
+  const created = await tx.customer.create({
+    data: {
+      name: 'Walk-In Customer',
+      phone: null,
+      email: null,
+      address: null,
+      notes: 'Auto-created walk-in customer',
+      isWalkIn: true,
+      createdBy: actorId,
+    },
+    select: { id: true },
+  });
+
+  return created.id;
+}
+
 export async function createPosCheckout(rawData: unknown): Promise<ActionResult<{ id: string; invoiceNo: string; receiptNo: string | null }>> {
   if (!db) return { success: false, error: 'Database belum dikonfigurasi' };
   const actor = await assertRole(salesRoles);
@@ -48,22 +70,19 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
 
   try {
     const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const invoiceTotal = parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0) - parsed.data.discount;
-    const invoice = await tx.invoice.create({
-      data: {
-        invoiceNo: await createInvoiceNumber(tx),
-        customerId: parsed.data.customerId || 'cl-walk-in',
-        status: parsed.data.amountPaid > 0 ? 'PARTIAL' : 'PENDING',
-        source: 'POS',
-        subtotal: parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0),
-        tax: 0,
-        discount: parsed.data.discount,
-        total: invoiceTotal,
-          notes: parsed.data.notes || null,
-          createdBy: actor.id,
-          updatedBy: actor.id,
-        },
-      });
+      const invoiceTotal = parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0) - parsed.data.discount;
+      const customerId = parsed.data.customerId?.trim()
+        ? parsed.data.customerId.trim()
+        : await resolveWalkInCustomer(tx, actor.id);
+
+      const validatedItems: Array<{
+        productId: string;
+        productName: string;
+        qty: number;
+        unitPrice: number;
+        requiresBatch: boolean;
+        allocations?: Array<{ id: string; qty: number }>;
+      }> = [];
 
       for (const item of parsed.data.items) {
         const product = await tx.product.findUnique({ where: { id: item.productId }, select: { id: true, name: true, requiresBatch: true, currentQty: true, sellingPrice: true } });
@@ -71,57 +90,101 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
           throw new Error(`Produk ${item.productId} tidak ditemukan`);
         }
 
+        if (!product.requiresBatch) {
+          if (product.currentQty < item.qty) {
+            throw new Error(`Stok tidak mencukupi untuk ${product.name}`);
+          }
+        } else {
+          const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } });
+          const allocations = allocateFefoBatches(batches, item.qty);
+          if (!allocations.length) {
+            throw new Error(`Stok batch tidak tersedia untuk ${product.name}`);
+          }
+          validatedItems.push({
+            productId: product.id,
+            productName: product.name,
+            qty: item.qty,
+            unitPrice: item.unitPrice,
+            requiresBatch: true,
+            allocations,
+          });
+          continue;
+        }
+
+        validatedItems.push({
+          productId: product.id,
+          productName: product.name,
+          qty: item.qty,
+          unitPrice: item.unitPrice,
+          requiresBatch: false,
+        });
+      }
+
+      const invoice = await tx.invoice.create({
+        data: {
+          invoiceNo: await createInvoiceNumber(tx),
+          customerId,
+          status: parsed.data.amountPaid > 0 ? 'PARTIAL' : 'PENDING',
+          source: 'POS',
+          subtotal: parsed.data.items.reduce((sum: number, item) => sum + item.qty * item.unitPrice, 0),
+          tax: 0,
+          discount: parsed.data.discount,
+          total: invoiceTotal,
+          notes: parsed.data.notes || null,
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
+
+      for (const item of validatedItems) {
         await tx.invoiceItem.create({
           data: {
             invoiceId: invoice.id,
-            productId: product.id,
-            description: product.name,
+            productId: item.productId,
+            description: item.productName,
             qty: item.qty,
             unitPrice: item.unitPrice,
             total: item.qty * item.unitPrice,
           },
         });
 
-        if (product.requiresBatch) {
-          const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } });
-          const allocations = allocateFefoBatches(batches, item.qty);
-          if (!allocations.length) {
-            throw new Error(`Stok batch tidak tersedia untuk ${product.name}`);
-          }
-
-          for (const allocation of allocations) {
+        if (item.requiresBatch) {
+          const batches = await tx.inventoryBatch.findMany({ where: { productId: item.productId, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } });
+          for (const allocation of item.allocations ?? []) {
             const batch = batches.find((candidate) => candidate.id === allocation.id);
             if (!batch) continue;
-            const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty - allocation.qty, updatedAt: new Date() } });
+            const nextBatchQty = batch.currentQty - allocation.qty;
+            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: nextBatchQty, updatedAt: new Date() } });
             await tx.stockMovement.create({
               data: {
-                productId: product.id,
+                productId: item.productId,
                 batchId: batch.id,
                 warehouseId: null,
                 type: 'OUT',
                 refType: 'SALES',
                 refId: invoice.id,
                 qty: -allocation.qty,
-                balanceAfter: updatedBatch.currentQty,
+                balanceAfter: nextBatchQty,
                 notes: 'POS checkout',
                 createdBy: actor.id,
               },
             });
           }
 
-          await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
+          await tx.product.update({ where: { id: item.productId }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
         } else {
-          await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
+          const nextQty = (item as { currentQty?: number }).currentQty ?? 0;
+          await tx.product.update({ where: { id: item.productId }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
           await tx.stockMovement.create({
             data: {
-              productId: product.id,
+              productId: item.productId,
               batchId: null,
               warehouseId: null,
               type: 'OUT',
               refType: 'SALES',
               refId: invoice.id,
               qty: -item.qty,
-              balanceAfter: Math.max(0, product.currentQty - item.qty),
+              balanceAfter: nextQty - item.qty,
               notes: 'POS checkout',
               createdBy: actor.id,
             },
@@ -129,32 +192,32 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
         }
       }
 
-const paymentAmount = Math.min(parsed.data.amountPaid, Number(invoiceTotal));
-    const receiptNo = paymentAmount > 0 ? `RCP-${String(Date.now()).slice(-4)}` : null;
+      const paymentAmount = Math.min(parsed.data.amountPaid, Number(invoiceTotal));
+      const receiptNo = paymentAmount > 0 ? `RCP-${String(Date.now()).slice(-4)}` : null;
 
-    await tx.payment.create({
-      data: {
-        invoiceId: invoice.id,
-        method: parsed.data.paymentMethod as PaymentMethod,
-        amount: paymentAmount,
-        referenceNo: null,
-        status: 'SUCCESS',
-        createdBy: actor.id,
-      },
-    });
+      await tx.payment.create({
+        data: {
+          invoiceId: invoice.id,
+          method: parsed.data.paymentMethod as PaymentMethod,
+          amount: paymentAmount,
+          referenceNo: null,
+          status: 'SUCCESS',
+          createdBy: actor.id,
+        },
+      });
 
-    const nextStatus = paymentAmount >= Number(invoiceTotal) ? 'PAID' : 'PARTIAL';
-    await tx.invoice.update({
-      where: { id: invoice.id },
-      data: {
-        status: nextStatus,
-        paidAmount: paymentAmount,
-        receiptNo: receiptNo ?? undefined,
-      },
-    });
+      const nextStatus = paymentAmount >= Number(invoiceTotal) ? 'PAID' : 'PARTIAL';
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: nextStatus,
+          paidAmount: paymentAmount,
+          receiptNo: receiptNo ?? undefined,
+        },
+      });
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Invoice', entityId: invoice.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return { ...invoice, receiptNo };
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Invoice', entityId: invoice.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return { ...invoice, receiptNo };
     });
 
     if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {

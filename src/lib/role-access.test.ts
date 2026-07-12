@@ -30,4 +30,14 @@ describe('role access helpers', () => {
     expect(cashierConfig.shortcuts.some((shortcut) => shortcut.href === '/pos')).toBe(true);
     expect(ownerConfig.navigation.some((item) => item.href === '/reports')).toBe(true);
   });
+
+  it('allows every dashboard navigation item for the role that exposes it', () => {
+    const roles: Array<'OWNER' | 'ADMIN' | 'DOCTOR' | 'CASHIER' | 'STAFF' | 'CUSTOMER'> = ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF', 'CUSTOMER'];
+    for (const role of roles) {
+      const config = getDashboardRoleConfig(role);
+      for (const item of [...config.navigation, ...config.shortcuts]) {
+        expect(canAccessRoute(role, item.href)).toBe(true);
+      }
+    }
+  });
 });

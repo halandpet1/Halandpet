@@ -3,9 +3,31 @@ import { db } from '@/lib/db';
 import { hashPin } from '@/lib/auth';
 import { ensureDevelopmentSeed } from '@/lib/dev-auth';
 
-export async function POST() {
+function generateSeedPin() {
+  const digits = '0123456789';
+  return Array.from({ length: 6 }, () => digits[Math.floor(Math.random() * digits.length)]).join('');
+}
+
+function isSeedRequestAuthorized(request: Request) {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+
+  if (!process.env.SEED_TOKEN) {
+    return false;
+  }
+
+  const token = request.headers.get('x-seed-token');
+  return token === process.env.SEED_TOKEN;
+}
+
+export async function POST(request: Request) {
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     return NextResponse.json({ ok: false, message: 'Seed is unavailable during build' }, { status: 500 });
+  }
+
+  if (!isSeedRequestAuthorized(request)) {
+    return NextResponse.json({ ok: false, message: 'Seed access denied' }, { status: 403 });
   }
 
   if (!db) {
@@ -18,46 +40,50 @@ export async function POST() {
     return NextResponse.json({ ok: true, message: 'Seed already initialized' });
   }
 
+  const seedPin = generateSeedPin();
   const owner = await db.user.create({
     data: {
       username: 'owner',
-      pinHash: await hashPin('123456'),
+      pinHash: await hashPin(seedPin),
       fullName: 'Owner HaLand',
       role: 'OWNER',
       mustChangePin: true,
     },
   });
+
+  const seedUsers = [
+    {
+      username: 'admin',
+      pinHash: await hashPin(seedPin),
+      fullName: 'Admin HaLand',
+      role: 'ADMIN',
+      mustChangePin: true,
+    },
+    {
+      username: 'doctor',
+      pinHash: await hashPin(seedPin),
+      fullName: 'Dr. HaLand',
+      role: 'DOCTOR',
+      mustChangePin: true,
+    },
+    {
+      username: 'cashier',
+      pinHash: await hashPin(seedPin),
+      fullName: 'Kasir HaLand',
+      role: 'CASHIER',
+      mustChangePin: true,
+    },
+    {
+      username: 'staff',
+      pinHash: await hashPin(seedPin),
+      fullName: 'Staff HaLand',
+      role: 'STAFF',
+      mustChangePin: true,
+    },
+  ] as const;
+
   await db.user.createMany({
-    data: [
-      {
-        username: 'admin',
-        pinHash: await hashPin('123456'),
-        fullName: 'Admin HaLand',
-        role: 'ADMIN',
-        mustChangePin: false,
-      },
-      {
-        username: 'doctor',
-        pinHash: await hashPin('123456'),
-        fullName: 'Dr. HaLand',
-        role: 'DOCTOR',
-        mustChangePin: false,
-      },
-      {
-        username: 'cashier',
-        pinHash: await hashPin('123456'),
-        fullName: 'Kasir HaLand',
-        role: 'CASHIER',
-        mustChangePin: false,
-      },
-      {
-        username: 'staff',
-        pinHash: await hashPin('123456'),
-        fullName: 'Staff HaLand',
-        role: 'STAFF',
-        mustChangePin: false,
-      },
-    ],
+    data: seedUsers,
     skipDuplicates: true,
   });
   await db.clinicSetting.create({
@@ -83,11 +109,16 @@ export async function POST() {
 
   return NextResponse.json({
     ok: true,
-    owner: {
-      id: owner.id,
-      username: owner.username,
-      fullName: owner.fullName,
-      role: owner.role,
-    },
+    seedPin,
+    users: [
+      {
+        id: owner.id,
+        username: owner.username,
+        fullName: owner.fullName,
+        role: owner.role,
+        mustChangePin: true,
+      },
+      ...seedUsers.map((user) => ({ username: user.username, fullName: user.fullName, role: user.role, mustChangePin: true })),
+    ],
   });
 }

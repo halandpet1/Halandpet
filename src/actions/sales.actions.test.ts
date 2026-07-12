@@ -9,7 +9,7 @@ const dbMock = vi.hoisted(() => ({
   payment: { create: vi.fn(), findMany: vi.fn() },
   stockMovement: { create: vi.fn(), findMany: vi.fn() },
   auditLog: { create: vi.fn() },
-  customer: { findMany: vi.fn() },
+  customer: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
   customerMembership: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
   loyaltyPointLedger: { create: vi.fn(), findMany: vi.fn() },
   voucher: { create: vi.fn(), findFirst: vi.fn() },
@@ -51,6 +51,35 @@ describe('sales actions', () => {
     expect(dbMock.invoice.create).toHaveBeenCalled();
     expect(dbMock.invoiceItem.create).toHaveBeenCalled();
     expect(dbMock.payment.create).toHaveBeenCalled();
+  });
+
+  it('rejects checkout when requested quantity exceeds stock and rolls back', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CASHIER', fullName: 'Kasir' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CASHIER', isActive: true, deletedAt: null });
+    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 1, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+
+    const result = await createPosCheckout({ customerId: 'cust-1', items: [{ productId: 'prod-1', qty: 2, unitPrice: 1500 }], discount: 0, paymentMethod: 'CASH', amountPaid: 0, notes: 'Checkout' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Stok tidak mencukupi');
+    expect(dbMock.invoice.create).not.toHaveBeenCalled();
+    expect(dbMock.stockMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a walk-in customer automatically when no customerId is provided', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CASHIER', fullName: 'Kasir' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CASHIER', isActive: true, deletedAt: null });
+    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 5, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.customer.findFirst.mockResolvedValue(null);
+    dbMock.customer.create.mockResolvedValue({ id: 'cust-walk-in' });
+    dbMock.invoice.create.mockResolvedValue({ id: 'invoice-2', invoiceNo: 'INV-202607-00003' });
+    dbMock.payment.create.mockResolvedValue({ id: 'payment-2' });
+
+    const result = await createPosCheckout({ items: [{ productId: 'prod-1', qty: 1, unitPrice: 1500 }], discount: 0, paymentMethod: 'CASH', amountPaid: 1500, notes: 'Walk in' });
+
+    expect(result.success).toBe(true);
+    expect(dbMock.customer.create).toHaveBeenCalled();
   });
 
   it('updates invoice billing details and due date', async () => {

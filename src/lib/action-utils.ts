@@ -32,24 +32,11 @@ export async function requireSessionUser() {
 
 export async function requireRole(allowedRoles: UserRole[]) {
   const user = await requireSessionUser();
-  if (!user) {
+  if (!user || !allowedRoles.includes(user.role)) {
     return null;
   }
 
-  const dbUser = await db?.user.findUnique({
-    where: { id: user.id },
-    select: { id: true, role: true, isActive: true, deletedAt: true },
-  });
-
-  if (!dbUser || dbUser.deletedAt || !dbUser.isActive || !allowedRoles.includes(dbUser.role)) {
-    return null;
-  }
-
-  return {
-    id: dbUser.id,
-    role: dbUser.role,
-    fullName: user.fullName,
-  };
+  return user;
 }
 
 export async function logAudit(action: string, entity: string, entityId: string, userId: string | null, changes: Prisma.InputJsonValue) {

@@ -13,13 +13,24 @@ const routeAccess: Record<string, UserRole[]> = {
   '/admin': ['OWNER', 'ADMIN'],
   '/inventory': ['OWNER', 'ADMIN', 'STAFF'],
   '/pos': ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'],
-  '/hotel': ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'],
+  '/pos/invoice': ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'],
+  '/pos/payment': ['OWNER', 'ADMIN', 'CASHIER', 'STAFF'],
+  '/hotel': ['OWNER', 'ADMIN', 'CASHIER', 'STAFF', 'CUSTOMER'],
   '/clinical': ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF'],
   '/reports': ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'],
   '/settings': ['OWNER', 'ADMIN'],
   '/monitoring': ['OWNER', 'ADMIN'],
   '/customers': ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'],
-  '/pets': ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF'],
+  '/pets': ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF', 'CUSTOMER'],
+  '/appointment': ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF', 'CUSTOMER'],
+  '/daily-task': ['OWNER', 'ADMIN', 'STAFF'],
+  '/medical-history': ['OWNER', 'ADMIN', 'DOCTOR', 'STAFF', 'CUSTOMER'],
+  '/invoice': ['OWNER', 'ADMIN', 'CASHIER', 'STAFF', 'CUSTOMER'],
+  '/profile': ['OWNER', 'ADMIN', 'DOCTOR', 'CASHIER', 'STAFF', 'CUSTOMER'],
+  '/medical-record': ['OWNER', 'ADMIN', 'DOCTOR'],
+  '/prescription': ['OWNER', 'ADMIN', 'DOCTOR'],
+  '/laboratory': ['OWNER', 'ADMIN', 'DOCTOR'],
+  '/vaccination': ['OWNER', 'ADMIN', 'DOCTOR'],
   '/portal': ['CUSTOMER'],
 };
 
@@ -27,7 +38,7 @@ export function canAccessRoute(role: UserRole, pathname: string) {
   const normalizedPath = pathname === '/' ? '/dashboard' : pathname;
   const match = Object.entries(routeAccess).find(([path]) => normalizedPath === path || normalizedPath.startsWith(`${path}/`));
   if (!match) {
-    return role === 'CUSTOMER' ? false : true;
+    return false;
   }
   return match[1].includes(role);
 }
