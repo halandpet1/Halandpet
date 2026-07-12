@@ -14,6 +14,46 @@ async function assertRole(allowedRoles: UserRole[]) {
   return requireRole(allowedRoles);
 }
 
+async function decrementProductStock(tx: Prisma.TransactionClient, productId: string, qty: number) {
+  const updated = await tx.product.updateMany({
+    where: { id: productId, currentQty: { gte: qty } },
+    data: { currentQty: { decrement: qty } },
+  });
+
+  if (updated.count === 0) {
+    throw new Error('Stok tidak mencukupi');
+  }
+
+  return updated;
+}
+
+async function incrementProductStock(tx: Prisma.TransactionClient, productId: string, qty: number) {
+  return tx.product.updateMany({
+    where: { id: productId },
+    data: { currentQty: { increment: qty } },
+  });
+}
+
+async function decrementBatchStock(tx: Prisma.TransactionClient, batchId: string, qty: number) {
+  const updated = await tx.inventoryBatch.updateMany({
+    where: { id: batchId, currentQty: { gte: qty } },
+    data: { currentQty: { decrement: qty } },
+  });
+
+  if (updated.count === 0) {
+    throw new Error('Stok batch tidak mencukupi');
+  }
+
+  return updated;
+}
+
+async function incrementBatchStock(tx: Prisma.TransactionClient, batchId: string, qty: number) {
+  return tx.inventoryBatch.updateMany({
+    where: { id: batchId },
+    data: { currentQty: { increment: qty } },
+  });
+}
+
 async function createInvoiceNumber(tx: Prisma.TransactionClient) {
   const now = new Date();
   const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -85,16 +125,12 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
       }> = [];
 
       for (const item of parsed.data.items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId }, select: { id: true, name: true, requiresBatch: true, currentQty: true, sellingPrice: true } });
+        const product = await tx.product.findFirst({ where: { id: item.productId, deletedAt: null }, select: { id: true, name: true, requiresBatch: true, currentQty: true, sellingPrice: true } });
         if (!product) {
           throw new Error(`Produk ${item.productId} tidak ditemukan`);
         }
 
-        if (!product.requiresBatch) {
-          if (product.currentQty < item.qty) {
-            throw new Error(`Stok tidak mencukupi untuk ${product.name}`);
-          }
-        } else {
+        if (product.requiresBatch) {
           const batches = await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } });
           const allocations = allocateFefoBatches(batches, item.qty);
           if (!allocations.length) {
@@ -153,8 +189,8 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
           for (const allocation of item.allocations ?? []) {
             const batch = batches.find((candidate) => candidate.id === allocation.id);
             if (!batch) continue;
-            const nextBatchQty = batch.currentQty - allocation.qty;
-            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: nextBatchQty, updatedAt: new Date() } });
+            await decrementBatchStock(tx, batch.id, allocation.qty);
+            const updatedBatch = await tx.inventoryBatch.findFirst({ where: { id: batch.id }, select: { currentQty: true } });
             await tx.stockMovement.create({
               data: {
                 productId: item.productId,
@@ -164,17 +200,17 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
                 refType: 'SALES',
                 refId: invoice.id,
                 qty: -allocation.qty,
-                balanceAfter: nextBatchQty,
+                balanceAfter: updatedBatch?.currentQty ?? batch.currentQty - allocation.qty,
                 notes: 'POS checkout',
                 createdBy: actor.id,
               },
             });
           }
 
-          await tx.product.update({ where: { id: item.productId }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
+          await decrementProductStock(tx, item.productId, item.qty);
         } else {
-          const nextQty = (item as { currentQty?: number }).currentQty ?? 0;
-          await tx.product.update({ where: { id: item.productId }, data: { currentQty: { decrement: item.qty }, updatedAt: new Date() } });
+          await decrementProductStock(tx, item.productId, item.qty);
+          const updatedProduct = await tx.product.findFirst({ where: { id: item.productId }, select: { currentQty: true } });
           await tx.stockMovement.create({
             data: {
               productId: item.productId,
@@ -184,7 +220,7 @@ export async function createPosCheckout(rawData: unknown): Promise<ActionResult<
               refType: 'SALES',
               refId: invoice.id,
               qty: -item.qty,
-              balanceAfter: nextQty - item.qty,
+              balanceAfter: updatedProduct?.currentQty ?? 0,
               notes: 'POS checkout',
               createdBy: actor.id,
             },
@@ -311,18 +347,19 @@ export async function voidInvoice(rawData: unknown): Promise<ActionResult<{ id: 
             if (!batchId) continue;
             const batch = batches.find((candidate) => candidate.id === batchId);
             if (!batch) continue;
-            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + Math.abs(Number(movement.qty)), updatedAt: new Date() } });
+            await incrementBatchStock(tx, batch.id, Math.abs(Number(movement.qty)));
           }
         } else {
           const batch = batches[0];
           if (batch) {
-            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + item.qty, updatedAt: new Date() } });
+            await incrementBatchStock(tx, batch.id, item.qty);
           }
         }
       } else {
-        await tx.product.update({ where: { id: product.id }, data: { currentQty: { increment: item.qty } } });
+        await incrementProductStock(tx, product.id, item.qty);
       }
 
+      const updatedProduct = await tx.product.findFirst({ where: { id: product.id }, select: { currentQty: true } });
       await tx.stockMovement.create({
         data: {
           productId: product.id,
@@ -332,7 +369,7 @@ export async function voidInvoice(rawData: unknown): Promise<ActionResult<{ id: 
           refType: 'SALES',
           refId: updated.id,
           qty: item.qty,
-          balanceAfter: product.currentQty + item.qty,
+          balanceAfter: updatedProduct?.currentQty ?? product.currentQty + item.qty,
           notes: `Void invoice: ${parsed.data.reason}`,
           createdBy: actor.id,
         },
@@ -463,18 +500,19 @@ export async function createInvoiceRefund(rawData: unknown): Promise<ActionResul
             if (!batchId) continue;
             const batch = batches.find((candidate) => candidate.id === batchId);
             if (!batch) continue;
-            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + Math.abs(Number(movement.qty)), updatedAt: new Date() } });
+            await incrementBatchStock(tx, batch.id, Math.abs(Number(movement.qty)));
           }
         } else {
           const batch = batches[0];
           if (batch) {
-            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: batch.currentQty + item.qty, updatedAt: new Date() } });
+            await incrementBatchStock(tx, batch.id, item.qty);
           }
         }
       } else {
-        await tx.product.update({ where: { id: product.id }, data: { currentQty: { increment: item.qty } } });
+        await incrementProductStock(tx, product.id, item.qty);
       }
 
+      const updatedProduct = await tx.product.findFirst({ where: { id: product.id }, select: { currentQty: true } });
       await tx.stockMovement.create({
         data: {
           productId: product.id,
@@ -484,7 +522,7 @@ export async function createInvoiceRefund(rawData: unknown): Promise<ActionResul
           refType: 'SALES',
           refId: invoice.id,
           qty: item.qty,
-          balanceAfter: product.currentQty + item.qty,
+          balanceAfter: updatedProduct?.currentQty ?? product.currentQty + item.qty,
           notes: `Refund: ${parsed.data.reason}`,
           createdBy: actor.id,
         },

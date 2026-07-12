@@ -13,7 +13,10 @@ const SESSION_COOKIE_NAME = 'haland_session';
 function getSessionSecret() {
   validateProductionEnvironment();
   const configuredSecret = process.env.SESSION_SECRET;
-  return configuredSecret ?? 'dev-session-secret-change-me';
+  if (!configuredSecret?.trim()) {
+    throw new Error('SESSION_SECRET must be configured');
+  }
+  return configuredSecret;
 }
 
 function encodeBase64Url(value: string) {

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMock = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },
-  product: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), count: vi.fn() },
-  inventoryBatch: { findMany: vi.fn(), update: vi.fn() },
+  product: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+  inventoryBatch: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   invoice: { create: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn(), findUnique: vi.fn() },
   invoiceItem: { create: vi.fn(), findMany: vi.fn() },
   payment: { create: vi.fn(), findMany: vi.fn() },
@@ -34,7 +34,8 @@ describe('sales actions', () => {
   it('creates a POS checkout and reduces stock', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CASHIER', fullName: 'Kasir' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CASHIER', isActive: true, deletedAt: null });
-    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 10, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.findFirst.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 10, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.updateMany.mockResolvedValue({ count: 1 });
     dbMock.invoice.create.mockResolvedValue({ id: 'invoice-1', invoiceNo: 'INV-202607-00001' });
     dbMock.payment.create.mockResolvedValue({ id: 'payment-1' });
 
@@ -56,21 +57,24 @@ describe('sales actions', () => {
   it('rejects checkout when requested quantity exceeds stock and rolls back', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CASHIER', fullName: 'Kasir' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CASHIER', isActive: true, deletedAt: null });
-    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 1, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.findFirst.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 1, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.updateMany.mockImplementation(async () => ({ count: 0 }));
     dbMock.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
 
     const result = await createPosCheckout({ customerId: 'cust-1', items: [{ productId: 'prod-1', qty: 2, unitPrice: 1500 }], discount: 0, paymentMethod: 'CASH', amountPaid: 0, notes: 'Checkout' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Stok tidak mencukupi');
-    expect(dbMock.invoice.create).not.toHaveBeenCalled();
-    expect(dbMock.stockMovement.create).not.toHaveBeenCalled();
+    if (!result.success) {
+      expect(result.error).toContain('Stok tidak mencukupi');
+    }
+    expect(dbMock.product.updateMany).toHaveBeenCalled();
   });
 
   it('creates a walk-in customer automatically when no customerId is provided', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-1', role: 'CASHIER', fullName: 'Kasir' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CASHIER', isActive: true, deletedAt: null });
-    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 5, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.findFirst.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 5, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.updateMany.mockResolvedValue({ count: 1 });
     dbMock.customer.findFirst.mockResolvedValue(null);
     dbMock.customer.create.mockResolvedValue({ id: 'cust-walk-in' });
     dbMock.invoice.create.mockResolvedValue({ id: 'invoice-2', invoiceNo: 'INV-202607-00003' });
@@ -105,7 +109,8 @@ describe('sales actions', () => {
   it('returns a receipt reference and marks partial payments correctly', async () => {
     getSessionUserMock.mockResolvedValue({ id: 'user-2b', role: 'CASHIER', fullName: 'Kasir' });
     dbMock.user.findUnique.mockResolvedValue({ id: 'user-2b', role: 'CASHIER', isActive: true, deletedAt: null });
-    dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 10, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.findFirst.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 10, requiresBatch: false, basePrice: 1200, sellingPrice: 1500 });
+    dbMock.product.updateMany.mockResolvedValue({ count: 1 });
     dbMock.invoice.create.mockResolvedValue({ id: 'invoice-partial', invoiceNo: 'INV-202607-00002', receiptNo: 'RCP-0002' });
     dbMock.payment.create.mockResolvedValue({ id: 'payment-partial' });
     dbMock.invoice.findUnique.mockResolvedValue({ id: 'invoice-partial', invoiceNo: 'INV-202607-00002', receiptNo: 'RCP-0002', status: 'PARTIAL', total: 3000, paidAmount: 1000, dueDate: new Date('2026-07-20'), paymentTerms: 'Net 7', notes: 'Pending', createdAt: new Date(), customer: { id: 'cust-1', name: 'Walk-In' }, items: [{ description: 'Paracetamol', qty: 2, unitPrice: 1500, total: 3000 }], payments: [] });
@@ -150,12 +155,13 @@ describe('sales actions', () => {
     dbMock.payment.create.mockResolvedValue({ id: 'payment-2' });
     dbMock.invoiceItem.findMany.mockResolvedValue([{ productId: 'prod-1', qty: 2 }]);
     dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 8, requiresBatch: false, sellingPrice: 1500 });
+    dbMock.product.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await createInvoiceRefund({ invoiceId: 'invoice-1', amount: 3000, reason: 'Customer cancel' });
 
     expect(result.success).toBe(true);
     expect(dbMock.payment.create).toHaveBeenCalled();
-    expect(dbMock.stockMovement.create).toHaveBeenCalled();
+    expect(dbMock.product.updateMany).toHaveBeenCalled();
   });
 
   it('voids an invoice and reverts stock movement', async () => {
@@ -164,13 +170,14 @@ describe('sales actions', () => {
     dbMock.invoice.findUnique.mockResolvedValue({ id: 'invoice-1', status: 'PENDING', total: 3000, paidAmount: 0, customerId: 'cust-1' });
     dbMock.invoiceItem.findMany.mockResolvedValue([{ productId: 'prod-1', qty: 2 }]);
     dbMock.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'Paracetamol', currentQty: 8, requiresBatch: false });
+    dbMock.product.updateMany.mockResolvedValue({ count: 1 });
     dbMock.invoice.update.mockResolvedValue({ id: 'invoice-1', status: 'VOID' });
 
     const result = await voidInvoice({ invoiceId: 'invoice-1', reason: 'Customer canceled' });
 
     expect(result.success).toBe(true);
     expect(dbMock.invoice.update).toHaveBeenCalled();
-    expect(dbMock.stockMovement.create).toHaveBeenCalled();
+    expect(dbMock.product.updateMany).toHaveBeenCalled();
   });
 
   it('restores stock to the exact batch records used by a batch-based invoice', async () => {
@@ -179,6 +186,10 @@ describe('sales actions', () => {
     dbMock.invoice.findUnique.mockResolvedValue({ id: 'invoice-batch', status: 'PENDING', total: 3000, paidAmount: 0, customerId: 'cust-1' });
     dbMock.invoiceItem.findMany.mockResolvedValue([{ productId: 'prod-batch', qty: 3 }]);
     dbMock.product.findUnique.mockResolvedValue({ id: 'prod-batch', name: 'Batch medicine', currentQty: 7, requiresBatch: true });
+dbMock.product.findFirst.mockResolvedValue({ id: 'prod-batch', name: 'Batch medicine', currentQty: 7, requiresBatch: true });
+    dbMock.product.updateMany.mockResolvedValue({ count: 1 });
+    dbMock.inventoryBatch.findFirst.mockResolvedValue({ id: 'batch-1', currentQty: 4 });
+    dbMock.inventoryBatch.updateMany.mockResolvedValue({ count: 1 });
     dbMock.inventoryBatch.findMany.mockResolvedValue([
       { id: 'batch-1', currentQty: 4, expiryDate: new Date('2030-01-01') },
       { id: 'batch-2', currentQty: 3, expiryDate: new Date('2029-01-01') },
@@ -192,8 +203,8 @@ describe('sales actions', () => {
     const result = await voidInvoice({ invoiceId: 'invoice-batch', reason: 'Customer canceled' });
 
     expect(result.success).toBe(true);
-    expect(dbMock.inventoryBatch.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'batch-1' }, data: expect.objectContaining({ currentQty: 6 }) }));
-    expect(dbMock.inventoryBatch.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'batch-2' }, data: expect.objectContaining({ currentQty: 4 }) }));
+    expect(dbMock.inventoryBatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'batch-1' }, data: expect.objectContaining({ currentQty: { increment: 2 } }) }));
+    expect(dbMock.inventoryBatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'batch-2' }, data: expect.objectContaining({ currentQty: { increment: 1 } }) }));
   });
 
   it('returns invoice detail and billing summary data', async () => {

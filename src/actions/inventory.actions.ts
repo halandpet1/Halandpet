@@ -24,6 +24,46 @@ async function assertRateLimit(actorId: string, scope: string) {
   return null;
 }
 
+async function decrementProductStock(tx: Prisma.TransactionClient, productId: string, qty: number) {
+  const updated = await tx.product.updateMany({
+    where: { id: productId, currentQty: { gte: qty } },
+    data: { currentQty: { decrement: qty } },
+  });
+
+  if (updated.count === 0) {
+    throw new Error('Stok obat tidak mencukupi');
+  }
+
+  return updated;
+}
+
+async function incrementProductStock(tx: Prisma.TransactionClient, productId: string, qty: number) {
+  return tx.product.updateMany({
+    where: { id: productId },
+    data: { currentQty: { increment: qty } },
+  });
+}
+
+async function decrementBatchStock(tx: Prisma.TransactionClient, batchId: string, qty: number) {
+  const updated = await tx.inventoryBatch.updateMany({
+    where: { id: batchId, currentQty: { gte: qty } },
+    data: { currentQty: { decrement: qty } },
+  });
+
+  if (updated.count === 0) {
+    throw new Error('Stok batch tidak mencukupi');
+  }
+
+  return updated;
+}
+
+async function incrementBatchStock(tx: Prisma.TransactionClient, batchId: string, qty: number) {
+  return tx.inventoryBatch.updateMany({
+    where: { id: batchId },
+    data: { currentQty: { increment: qty } },
+  });
+}
+
 function parseDate(value: string | undefined | null) {
   if (!value) {
     return null;
@@ -246,8 +286,9 @@ export async function createGoodsReceipt(rawData: unknown): Promise<ActionResult
           throw new Error(`Produk tidak ditemukan: ${item.productId}`);
         }
 
-        const nextQty = product.currentQty + item.qty;
-        await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
+        await incrementProductStock(tx, product.id, item.qty);
+        const updatedProduct = await tx.product.findFirst({ where: { id: product.id }, select: { currentQty: true } });
+        const nextQty = updatedProduct?.currentQty ?? product.currentQty + item.qty;
 
         if (product.requiresBatch) {
           await tx.inventoryBatch.create({
@@ -437,8 +478,9 @@ export async function updateWarehouseTransferStatus(rawData: { id: string; statu
           if (!product) {
             throw new Error(`Produk tidak ditemukan: ${item.productId}`);
           }
-          const nextQty = Math.max(0, product.currentQty - item.qty);
-          await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
+          await decrementProductStock(tx, product.id, item.qty);
+          const updatedProduct = await tx.product.findFirst({ where: { id: product.id }, select: { currentQty: true } });
+          const nextQty = updatedProduct?.currentQty ?? Math.max(0, product.currentQty - item.qty);
           await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: existing.fromWarehouseId ?? null, type: 'OUT', refType: 'TRANSFER', refId: updated.id, qty: -item.qty, balanceAfter: nextQty, notes: rawData.notes ?? null, createdBy: actor.id } });
           await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: existing.toWarehouseId ?? null, type: 'IN', refType: 'TRANSFER', refId: updated.id, qty: item.qty, balanceAfter: nextQty + item.qty, notes: rawData.notes ?? null, createdBy: actor.id } });
         }
@@ -475,8 +517,9 @@ export async function updateStockReturnStatus(rawData: { id: string; status: str
         if (!product) {
           throw new Error(`Produk tidak ditemukan: ${existing.productId}`);
         }
-        const nextQty = Math.max(0, product.currentQty + existing.qty);
-        await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
+        await incrementProductStock(tx, product.id, existing.qty);
+        const updatedProduct = await tx.product.findFirst({ where: { id: product.id }, select: { currentQty: true } });
+        const nextQty = updatedProduct?.currentQty ?? product.currentQty + existing.qty;
         await tx.stockMovement.create({ data: { productId: product.id, batchId: existing.batchId ?? null, warehouseId: existing.warehouseId ?? null, type: 'IN', refType: 'RETURN', refId: updated.id, qty: existing.qty, balanceAfter: nextQty, notes: rawData.notes ?? null, createdBy: actor.id } });
       }
 
@@ -501,16 +544,24 @@ export async function createDisposal(rawData: unknown): Promise<ActionResult<{ i
   const parsed = await parseOrFail(disposalSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const product = await db.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true } });
-  if (!product) return { success: false, error: 'Produk tidak ditemukan' };
+  let result;
+  try {
+    result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const product = await tx.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true } });
+      if (!product) {
+        throw new Error('Produk tidak ditemukan');
+      }
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const created = await tx.disposal.create({ data: { disposalNo: `DS-${Date.now()}`, productId: parsed.data.productId, warehouseId: parsed.data.warehouseId || null, batchId: parsed.data.batchId || null, type: parsed.data.type, qty: parsed.data.qty, reason: parsed.data.reason, status: 'POSTED', notes: parsed.data.notes || null } });
-    await tx.product.update({ where: { id: product.id }, data: { currentQty: Math.max(0, product.currentQty - parsed.data.qty), updatedAt: new Date() } });
-    await tx.stockMovement.create({ data: { productId: product.id, batchId: parsed.data.batchId || null, warehouseId: parsed.data.warehouseId || null, type: 'DISPOSAL', refType: 'DISPOSAL', refId: created.id, qty: -Math.abs(parsed.data.qty), balanceAfter: Math.max(0, product.currentQty - parsed.data.qty), notes: parsed.data.reason, createdBy: actor.id } });
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Disposal', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return created;
-  });
+      const created = await tx.disposal.create({ data: { disposalNo: `DS-${Date.now()}`, productId: parsed.data.productId, warehouseId: parsed.data.warehouseId || null, batchId: parsed.data.batchId || null, type: parsed.data.type, qty: parsed.data.qty, reason: parsed.data.reason, status: 'POSTED', notes: parsed.data.notes || null } });
+      await decrementProductStock(tx, product.id, parsed.data.qty);
+      const updatedProduct = await tx.product.findFirst({ where: { id: product.id }, select: { currentQty: true } });
+      await tx.stockMovement.create({ data: { productId: product.id, batchId: parsed.data.batchId || null, warehouseId: parsed.data.warehouseId || null, type: 'DISPOSAL', refType: 'DISPOSAL', refId: created.id, qty: -Math.abs(parsed.data.qty), balanceAfter: updatedProduct?.currentQty ?? Math.max(0, product.currentQty - parsed.data.qty), notes: parsed.data.reason, createdBy: actor.id } });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Disposal', entityId: created.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return created;
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal membuat disposal' };
+  }
 
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
     revalidatePath('/inventory');
@@ -633,16 +684,28 @@ export async function createStockAdjustment(rawData: unknown): Promise<ActionRes
   const parsed = await parseOrFail(stockAdjustmentSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const product = await db.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true, requiresBatch: true } });
-  if (!product) return { success: false, error: 'Produk tidak ditemukan' };
+  let result;
+  try {
+    result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const product = await tx.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true, requiresBatch: true } });
+      if (!product) {
+        throw new Error('Produk tidak ditemukan');
+      }
 
-  const nextQty = product.currentQty + parsed.data.delta;
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.product.update({ where: { id: product.id }, data: { currentQty: nextQty, updatedAt: new Date() } });
-    await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: parsed.data.warehouseId || null, type: 'ADJUSTMENT', refType: 'ADJUSTMENT', refId: `adjust-${Date.now()}`, qty: parsed.data.delta, balanceAfter: updated.currentQty, notes: parsed.data.notes, createdBy: actor.id } });
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'StockAdjustment', entityId: updated.id, changes: { ...parsed.data, delta: parsed.data.delta } as Prisma.InputJsonValue } });
-    return updated;
-  });
+      if (parsed.data.delta >= 0) {
+        await incrementProductStock(tx, product.id, parsed.data.delta);
+      } else {
+        await decrementProductStock(tx, product.id, Math.abs(parsed.data.delta));
+      }
+
+      const updated = await tx.product.findFirst({ where: { id: product.id }, select: { id: true, currentQty: true } });
+      await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: parsed.data.warehouseId || null, type: 'ADJUSTMENT', refType: 'ADJUSTMENT', refId: `adjust-${Date.now()}`, qty: parsed.data.delta, balanceAfter: updated?.currentQty ?? product.currentQty + parsed.data.delta, notes: parsed.data.notes, createdBy: actor.id } });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'StockAdjustment', entityId: product.id, changes: { ...parsed.data, delta: parsed.data.delta } as Prisma.InputJsonValue } });
+      return updated ?? product;
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal membuat penyesuaian stok' };
+  }
 
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
     revalidatePath('/inventory');
@@ -658,15 +721,28 @@ export async function createStockOpname(rawData: unknown): Promise<ActionResult<
   const parsed = await parseOrFail(stockOpnameSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const product = await db.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true } });
-  if (!product) return { success: false, error: 'Produk tidak ditemukan' };
+  let result;
+  try {
+    result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const product = await tx.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null }, select: { id: true, currentQty: true } });
+      if (!product) {
+        throw new Error('Produk tidak ditemukan');
+      }
 
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    const updated = await tx.product.update({ where: { id: product.id }, data: { currentQty: product.currentQty + parsed.data.delta, updatedAt: new Date() } });
-    await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: parsed.data.warehouseId || null, type: 'OPNAME', refType: 'OPNAME', refId: `opname-${Date.now()}`, qty: parsed.data.delta, balanceAfter: updated.currentQty, notes: parsed.data.notes, createdBy: actor.id } });
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'StockOpname', entityId: updated.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return updated;
-  });
+      if (parsed.data.delta >= 0) {
+        await incrementProductStock(tx, product.id, parsed.data.delta);
+      } else {
+        await decrementProductStock(tx, product.id, Math.abs(parsed.data.delta));
+      }
+
+      const updated = await tx.product.findFirst({ where: { id: product.id }, select: { id: true, currentQty: true } });
+      await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: parsed.data.warehouseId || null, type: 'OPNAME', refType: 'OPNAME', refId: `opname-${Date.now()}`, qty: parsed.data.delta, balanceAfter: updated?.currentQty ?? product.currentQty + parsed.data.delta, notes: parsed.data.notes, createdBy: actor.id } });
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'StockOpname', entityId: product.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return updated ?? product;
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal membuat opname stok' };
+  }
 
   revalidatePath('/inventory');
   return { success: true, data: { id: result.id } };
@@ -680,37 +756,41 @@ export async function createDispensing(rawData: unknown): Promise<ActionResult<{
   const parsed = await parseOrFail(stockAdjustmentSchema, rawData);
   if (!parsed.success) return parsed;
 
-  const product = await db.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null, isActive: true }, select: { id: true, name: true, requiresBatch: true, currentQty: true } });
-  if (!product) return { success: false, error: 'Produk tidak ditemukan' };
-
-  const batches = product.requiresBatch ? (await db.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } })) as Array<{ id: string; currentQty: number; expiryDate: Date | null }> : [];
-  const allocations = product.requiresBatch ? allocateFefoBatches(batches, Math.abs(parsed.data.delta)) : [];
-  if (product.requiresBatch && !allocations.length) {
-    return { success: false, error: 'Stok obat tidak mencukupi' };
-  }
-
-  if (!product.requiresBatch && product.currentQty < Math.abs(parsed.data.delta)) {
-    return { success: false, error: 'Stok obat tidak mencukupi' };
-  }
-
-  const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
-    if (product.requiresBatch && allocations.length) {
-      await tx.product.update({ where: { id: product.id }, data: { currentQty: { decrement: Math.abs(parsed.data.delta) }, updatedAt: new Date() } });
-      for (const allocation of allocations) {
-        const batch = batches.find((candidate) => candidate.id === allocation.id);
-        if (!batch) continue;
-        const nextBatchQty = (batch.currentQty ?? 0) - allocation.qty;
-        const updatedBatch = await tx.inventoryBatch.update({ where: { id: batch.id }, data: { currentQty: nextBatchQty, updatedAt: new Date() } });
-        await tx.stockMovement.create({ data: { productId: product.id, batchId: batch.id, warehouseId: null, type: 'OUT', refType: 'MEDICAL', refId: `dispense-${Date.now()}`, qty: -allocation.qty, balanceAfter: updatedBatch.currentQty, notes: parsed.data.notes, createdBy: actor.id } });
+  let result;
+  try {
+    result = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const product = await tx.product.findFirst({ where: { id: parsed.data.productId, deletedAt: null, isActive: true }, select: { id: true, name: true, requiresBatch: true, currentQty: true } });
+      if (!product) {
+        throw new Error('Produk tidak ditemukan');
       }
-    } else if (!product.requiresBatch) {
-      const updatedProduct = await tx.product.update({ where: { id: product.id }, data: { currentQty: product.currentQty - Math.abs(parsed.data.delta), updatedAt: new Date() } });
-      await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: null, type: 'OUT', refType: 'MEDICAL', refId: `dispense-${Date.now()}`, qty: Math.abs(parsed.data.delta), balanceAfter: updatedProduct.currentQty, notes: parsed.data.notes, createdBy: actor.id } });
-    }
 
-    await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Dispensing', entityId: product.id, changes: parsed.data as Prisma.InputJsonValue } });
-    return { id: product.id };
-  });
+      const batches = product.requiresBatch ? (await tx.inventoryBatch.findMany({ where: { productId: product.id, deletedAt: null, currentQty: { gt: 0 } }, select: { id: true, currentQty: true, expiryDate: true } })) as Array<{ id: string; currentQty: number; expiryDate: Date | null }> : [];
+      const allocations = product.requiresBatch ? allocateFefoBatches(batches, Math.abs(parsed.data.delta)) : [];
+      if (product.requiresBatch && !allocations.length) {
+        throw new Error('Stok obat tidak mencukupi');
+      }
+
+      if (product.requiresBatch && allocations.length) {
+        await decrementProductStock(tx, product.id, Math.abs(parsed.data.delta));
+        for (const allocation of allocations) {
+          const batch = batches.find((candidate) => candidate.id === allocation.id);
+          if (!batch) continue;
+          await decrementBatchStock(tx, batch.id, allocation.qty);
+          const updatedBatch = await tx.inventoryBatch.findFirst({ where: { id: batch.id }, select: { currentQty: true } });
+          await tx.stockMovement.create({ data: { productId: product.id, batchId: batch.id, warehouseId: null, type: 'OUT', refType: 'MEDICAL', refId: `dispense-${Date.now()}`, qty: -allocation.qty, balanceAfter: updatedBatch?.currentQty ?? batch.currentQty - allocation.qty, notes: parsed.data.notes, createdBy: actor.id } });
+        }
+      } else if (!product.requiresBatch) {
+        await decrementProductStock(tx, product.id, Math.abs(parsed.data.delta));
+        const updatedProduct = await tx.product.findFirst({ where: { id: product.id }, select: { currentQty: true } });
+        await tx.stockMovement.create({ data: { productId: product.id, batchId: null, warehouseId: null, type: 'OUT', refType: 'MEDICAL', refId: `dispense-${Date.now()}`, qty: Math.abs(parsed.data.delta), balanceAfter: updatedProduct?.currentQty ?? product.currentQty - Math.abs(parsed.data.delta), notes: parsed.data.notes, createdBy: actor.id } });
+      }
+
+      await tx.auditLog.create({ data: { userId: actor.id, action: 'CREATE', entity: 'Dispensing', entityId: product.id, changes: parsed.data as Prisma.InputJsonValue } });
+      return { id: product.id };
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Gagal membuat dispensing' };
+  }
 
   if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
     revalidatePath('/inventory');

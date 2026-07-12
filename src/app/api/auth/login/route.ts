@@ -1,37 +1,29 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { verifyPin } from '@/lib/auth';
-import { setSessionCookie } from '@/lib/session';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { loginAction } from '@/actions/auth.actions';
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const username = typeof body?.username === 'string' ? body.username : '';
-  const pin = typeof body?.pin === 'string' ? body.pin : '';
-  const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
+  let body: unknown;
 
-  if (!db) {
-    return NextResponse.json({ success: false, error: 'Database belum dikonfigurasi' }, { status: 500 });
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ success: false, error: 'Request body tidak valid' }, { status: 400 });
   }
 
-  const rateLimit = await checkRateLimit(`login:${ip}`, 5, 60_000);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { success: false, error: 'Terlalu banyak percobaan login. Coba lagi sebentar lagi.' },
-      { status: 429 },
-    );
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ success: false, error: 'Request body tidak valid' }, { status: 400 });
   }
 
-  const user = await db.user.findFirst({ where: { username, deletedAt: null } });
-  if (!user) {
-    return NextResponse.json({ success: false, error: 'Username atau PIN tidak valid' }, { status: 401 });
+  const parsedBody = body as Record<string, unknown>;
+  const username = typeof parsedBody.username === 'string' ? parsedBody.username.trim() : '';
+  const pin = typeof parsedBody.pin === 'string' ? parsedBody.pin : '';
+
+  const result = await loginAction({ username, pin });
+  if (!result.success) {
+    const errorMessage = result.error ?? 'Login gagal';
+    const status = errorMessage.includes('Terlalu banyak') ? 429 : 401;
+    return NextResponse.json({ success: false, error: errorMessage }, { status });
   }
 
-  const isValid = await verifyPin(pin, user.pinHash);
-  if (!isValid) {
-    return NextResponse.json({ success: false, error: 'Username atau PIN tidak valid' }, { status: 401 });
-  }
-
-  await setSessionCookie({ id: user.id, role: user.role, fullName: user.fullName });
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, data: result.data });
 }

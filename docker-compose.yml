@@ -19,11 +19,14 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      HOSTNAME: 0.0.0.0
       DATABASE_URL: postgresql://halandpet:halandpet@db:5432/halandpet?schema=public
       SESSION_SECRET: change-me-in-production
       NEXTAUTH_SECRET: change-me-in-production
+      RATE_LIMIT_STORE_FILE: /tmp/rate-limit-store.json
     depends_on:
       db:
         condition: service_healthy
     ports:
       - '3000:3000'
+    restart: unless-stopped

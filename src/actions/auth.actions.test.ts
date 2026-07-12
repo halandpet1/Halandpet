@@ -10,10 +10,11 @@ const dbMock = vi.hoisted(() => ({
 const verifyPinMock = vi.hoisted(() => vi.fn());
 const setSessionCookieMock = vi.hoisted(() => vi.fn());
 const checkRateLimitMock = vi.hoisted(() => vi.fn());
+const getSessionUserMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/db', () => ({ db: dbMock }));
 vi.mock('@/lib/auth', () => ({ hashPin: vi.fn(), verifyPin: verifyPinMock }));
-vi.mock('@/lib/session', () => ({ setSessionCookie: setSessionCookieMock }));
+vi.mock('@/lib/session', () => ({ setSessionCookie: setSessionCookieMock, getSessionUser: getSessionUserMock }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: checkRateLimitMock }));
 vi.mock('next/navigation', () => ({ redirect: (path: string) => { throw new Error(`redirect:${path}`); } }));
 
@@ -77,12 +78,13 @@ describe('loginAction', () => {
     const result = await loginAction({ username: 'owner', pin: '123456' });
 
     expect(result.success).toBe(true);
-    if (result.success) {
+    if (result.success && result.data) {
       expect(result.data.mustChangePin).toBe(true);
     }
   });
 
   it('changes the PIN only after validating the current one', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-3' });
     dbMock.user.findFirst.mockResolvedValue({ id: 'user-3', pinHash: 'old-hash', role: 'OWNER', fullName: 'Owner HaLand', mustChangePin: true });
     verifyPinMock.mockResolvedValue(true);
     dbMock.user.update.mockResolvedValue({});

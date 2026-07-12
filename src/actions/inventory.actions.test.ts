@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMock = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },
-  product: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
-  inventoryBatch: { findMany: vi.fn(), update: vi.fn(), create: vi.fn(), count: vi.fn() },
+  product: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+  inventoryBatch: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn(), count: vi.fn() },
   purchaseRequest: { create: vi.fn() },
   purchaseOrder: { findUnique: vi.fn(), findMany: vi.fn() },
   goodsReceipt: { create: vi.fn(), findMany: vi.fn() },
@@ -31,6 +31,9 @@ import { createDispensing, createGoodsReceipt, createPurchaseRequest, createSupp
 describe('inventory actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dbMock.product.updateMany.mockResolvedValue({ count: 1 });
+    dbMock.inventoryBatch.findFirst.mockResolvedValue({ currentQty: 8 });
+    dbMock.inventoryBatch.updateMany.mockResolvedValue({ count: 1 });
     dbMock.$transaction.mockImplementation(async (callback: (tx: typeof dbMock) => Promise<unknown>) => callback(dbMock));
   });
 
@@ -45,6 +48,32 @@ describe('inventory actions', () => {
 
     expect(result.success).toBe(true);
     expect(dbMock.stockMovement.create).toHaveBeenCalled();
+  });
+
+  it('prevents two simultaneous dispensing requests from overselling the same stock', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-1b', role: 'STAFF', fullName: 'Staff' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-1b', role: 'STAFF', isActive: true, deletedAt: null });
+
+    let availableQty = 1;
+    dbMock.product.findFirst.mockImplementation(async () => ({ id: 'product-1', name: 'Paracetamol', requiresBatch: false, currentQty: availableQty }));
+    dbMock.product.updateMany.mockImplementation(async () => {
+      if (availableQty <= 0) {
+        return { count: 0 };
+      }
+      availableQty -= 1;
+      return { count: 1 };
+    });
+
+    const [first, second] = await Promise.all([
+      createDispensing({ productId: 'product-1', delta: 1, notes: 'First' }),
+      createDispensing({ productId: 'product-1', delta: 1, notes: 'Second' }),
+    ]);
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(false);
+    if (!second.success) {
+      expect(second.error).toContain('Stok obat tidak mencukupi');
+    }
   });
 
   it('creates a purchase request for procurement approval', async () => {

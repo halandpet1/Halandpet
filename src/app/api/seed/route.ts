@@ -13,12 +13,13 @@ function isSeedRequestAuthorized(request: Request) {
     return true;
   }
 
-  if (!process.env.SEED_TOKEN) {
+  const configuredToken = process.env.SEED_TOKEN?.trim();
+  if (!configuredToken) {
     return false;
   }
 
-  const token = request.headers.get('x-seed-token');
-  return token === process.env.SEED_TOKEN;
+  const token = request.headers.get('x-seed-token')?.trim();
+  return token === configuredToken;
 }
 
 export async function POST(request: Request) {
@@ -80,10 +81,16 @@ export async function POST(request: Request) {
       role: 'STAFF',
       mustChangePin: true,
     },
-  ] as const;
+  ];
 
   await db.user.createMany({
-    data: seedUsers,
+    data: seedUsers.map((user) => ({
+      username: user.username,
+      pinHash: user.pinHash,
+      fullName: user.fullName,
+      role: user.role as 'ADMIN' | 'DOCTOR' | 'CASHIER' | 'STAFF',
+      mustChangePin: user.mustChangePin,
+    })),
     skipDuplicates: true,
   });
   await db.clinicSetting.create({

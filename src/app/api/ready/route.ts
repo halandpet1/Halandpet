@@ -13,3 +13,7 @@ export async function GET() {
     return NextResponse.json({ status: 'degraded', reason: 'database-unavailable' }, { status: 503 });
   }
 }
+
+export async function POST() {
+  return NextResponse.json({ status: 'error', error: 'Method not allowed' }, { status: 405 });
+}

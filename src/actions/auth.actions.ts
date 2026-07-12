@@ -7,6 +7,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { usernameSchema, pinSchema } from '@/validators/common.schema';
 import { ensureDevelopmentSeed, getDevelopmentAuthUser, verifyDevelopmentPin } from '@/lib/dev-auth';
 import { getRoleRedirectPath } from '@/lib/role-access';
+import { withActiveFilter } from '@/lib/soft-delete';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -37,7 +38,7 @@ export async function loginAction(rawData: FormData | Record<string, unknown>) {
     }
   } else {
     user = await db.user.findFirst({
-      where: { username: parsed.data.username, deletedAt: null },
+      where: withActiveFilter({ username: parsed.data.username, isActive: true }),
     });
 
     if (!user) {
@@ -99,7 +100,7 @@ export async function changePinAction(rawData: FormData | Record<string, unknown
     return { success: false, error: 'Sesi tidak valid' };
   }
 
-  const sessionUser = await db.user.findFirst({ where: { id: currentSession.id, deletedAt: null }, select: { id: true, pinHash: true, mustChangePin: true } });
+  const sessionUser = await db.user.findFirst({ where: withActiveFilter({ id: currentSession.id }), select: { id: true, pinHash: true, mustChangePin: true } });
   if (!sessionUser) {
     return { success: false, error: 'Pengguna tidak ditemukan' };
   }
@@ -121,26 +122,3 @@ export async function changePinAction(rawData: FormData | Record<string, unknown
   return { success: true, data: { updated: true } };
 }
 
-export async function createOwnerAction() {
-  if (!db) {
-    return { success: false, error: 'Database belum dikonfigurasi' };
-  }
-
-  const existing = await db.user.findFirst({ where: { role: 'OWNER' } });
-  if (existing) {
-    return { success: false, error: 'Owner sudah ada' };
-  }
-
-  const pin = '123456';
-  const owner = await db.user.create({
-    data: {
-      username: 'owner',
-      pinHash: await hashPin(pin),
-      fullName: 'Owner HaLand',
-      role: 'OWNER',
-      mustChangePin: true,
-    },
-  });
-
-  return { success: true, data: { ...owner, pin } };
-}

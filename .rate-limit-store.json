@@ -1,0 +1,22 @@
+{
+  "inventory:user-2:create-purchase-request": {
+    "count": 1,
+    "resetAt": 1783869707469
+  },
+  "inventory:user-3:create-goods-receipt": {
+    "count": 1,
+    "resetAt": 1783869707472
+  },
+  "inventory:user-3b:create-goods-receipt": {
+    "count": 1,
+    "resetAt": 1783869707476
+  },
+  "inventory:user-4:create-supplier-invoice": {
+    "count": 1,
+    "resetAt": 1783869707480
+  },
+  "inventory:user-5:create-supplier-payment": {
+    "count": 1,
+    "resetAt": 1783869707483
+  }
+}
