@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { jsonMethodNotAllowed, jsonResponse } from '@/lib/api-response';
 
 export async function GET() {
-  return NextResponse.json({ status: 'alive' });
+  return jsonResponse({ status: 'alive' });
 }
 
 export async function POST() {
-  return NextResponse.json({ status: 'error', error: 'Method not allowed' }, { status: 405 });
+  return jsonMethodNotAllowed();
 }

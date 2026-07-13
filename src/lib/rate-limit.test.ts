@@ -69,6 +69,20 @@ describe('checkRateLimit', () => {
     expect(second.allowed).toBe(false);
   });
 
+  it('falls back to in-memory rate limiting when the database is unavailable', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/db', () => ({ db: undefined }));
+
+    const { checkRateLimit: fallbackCheckRateLimit, clearRateLimit: fallbackClearRateLimit } = await import('./rate-limit');
+    const first = await fallbackCheckRateLimit('fallback-key', { max: 1, windowMs: 60_000 });
+    const second = await fallbackCheckRateLimit('fallback-key', { max: 1, windowMs: 60_000 });
+
+    expect(first.allowed).toBe(true);
+    expect(second.allowed).toBe(false);
+
+    await fallbackClearRateLimit('fallback-key');
+  });
+
   it('persists rate-limit state across module reloads', async () => {
     vi.resetModules();
 

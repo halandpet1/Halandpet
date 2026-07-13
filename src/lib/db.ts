@@ -7,15 +7,26 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const prismaClientSingleton = () => {
-  if (!process.env.DATABASE_URL || process.env.NEXT_PHASE === 'phase-production-build') {
+  const connectionString = process.env.DATABASE_POOL_URL ?? process.env.DATABASE_URL;
+
+  if (!connectionString || process.env.NEXT_PHASE === 'phase-production-build') {
     return undefined;
   }
 
   const { Pool } = pg;
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({
+    connectionString,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  });
   const adapter = new PrismaPg(pool);
 
-  return new PrismaClient({ adapter });
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+  });
 };
 
 export const db = globalForPrisma.prisma ?? prismaClientSingleton();

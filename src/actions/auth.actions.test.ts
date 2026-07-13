@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMock = vi.hoisted(() => ({
   user: {
@@ -27,7 +27,12 @@ import { changePinAction, loginAction } from './auth.actions';
 describe('loginAction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NODE_ENV = 'test';
+    vi.unstubAllEnvs();
+    vi.stubEnv('NODE_ENV', 'test');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('sets a session cookie and redirects after a successful login', async () => {
@@ -60,6 +65,22 @@ describe('loginAction', () => {
     });
   });
 
+  it('accepts the shared development PIN in non-production environments', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    dbMock.user.findFirst.mockResolvedValue(null);
+    ensureDevelopmentSeedMock.mockResolvedValue({ id: 'dev-owner' });
+    getDevelopmentAuthUserMock.mockResolvedValue({ id: 'dev-owner', pinHash: 'hashed-pin', role: 'OWNER', fullName: 'Owner HaLand', mustChangePin: false });
+    verifyDevelopmentPinMock.mockResolvedValue(true);
+    checkRateLimitMock.mockResolvedValue({ allowed: true, remaining: 4, retryAfterMs: 0 });
+
+    const result = await loginAction({ username: 'owner', pin: '123456' });
+
+    expect(result.success).toBe(true);
+    if (result.success && result.data) {
+      expect(result.data.redirectTo).toBe('/dashboard');
+    }
+  });
+
   it('blocks very frequent logins with a friendly error', async () => {
     checkRateLimitMock.mockResolvedValue({ allowed: false, remaining: 0, retryAfterMs: 30_000 });
 
@@ -89,10 +110,7 @@ describe('loginAction', () => {
   });
 
   it('falls back to development seed users when no database user is found in non-production', async () => {
-    Object.defineProperty(process.env, 'NODE_ENV', {
-      value: 'development',
-      configurable: true,
-    });
+    vi.stubEnv('NODE_ENV', 'development');
     dbMock.user.findFirst.mockResolvedValue(null);
     ensureDevelopmentSeedMock.mockResolvedValue({ id: 'dev-owner' });
     getDevelopmentAuthUserMock.mockResolvedValue({ id: 'dev-owner', pinHash: 'hashed-pin', role: 'OWNER', fullName: 'Owner HaLand', mustChangePin: false });

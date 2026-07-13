@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "binary"
 }
 
@@ -153,29 +153,29 @@ model User {
   createdBy       String?
   updatedBy       String?
 
-  createdCustomers Customer[]      @relation("CustomerCreatedByUser")
-  updatedCustomers Customer[]      @relation("CustomerUpdatedByUser")
-  portalCustomers  Customer[]      @relation("CustomerPortalUser")
-  createdPets      Pet[]           @relation("PetCreatedByUser")
-  updatedPets      Pet[]           @relation("PetUpdatedByUser")
-  appointments     Appointment[]
-  doctorSchedules  DoctorSchedule[]
-  queues           Queue[]
-  soapNotes        SoapNote[]
-  vitalSigns       VitalSignRecord[]
-  medicalRecords   MedicalRecord[]
-  diagnoses        Diagnosis[]
-  treatmentPlans   TreatmentPlan[]
-  prescriptions    Prescription[]
-  followUps        FollowUp[]
-  createdInvoices  Invoice[]       @relation("InvoiceCreatedByUser")
-  updatedInvoices  Invoice[]       @relation("InvoiceUpdatedByUser")
-  auditLogs        AuditLog[]
-  notifications    Notification[]
-  bookings         HotelBooking[] @relation("HotelBookingCreatedByUser")
-  hotelDailyLogs   HotelDailyLog[] @relation("HotelDailyLogCreator")
+  createdCustomers     Customer[]            @relation("CustomerCreatedByUser")
+  updatedCustomers     Customer[]            @relation("CustomerUpdatedByUser")
+  portalCustomers      Customer[]            @relation("CustomerPortalUser")
+  createdPets          Pet[]                 @relation("PetCreatedByUser")
+  updatedPets          Pet[]                 @relation("PetUpdatedByUser")
+  appointments         Appointment[]
+  doctorSchedules      DoctorSchedule[]
+  queues               Queue[]
+  soapNotes            SoapNote[]
+  vitalSigns           VitalSignRecord[]
+  medicalRecords       MedicalRecord[]
+  diagnoses            Diagnosis[]
+  treatmentPlans       TreatmentPlan[]
+  prescriptions        Prescription[]
+  followUps            FollowUp[]
+  createdInvoices      Invoice[]             @relation("InvoiceCreatedByUser")
+  updatedInvoices      Invoice[]             @relation("InvoiceUpdatedByUser")
+  auditLogs            AuditLog[]
+  notifications        Notification[]
+  bookings             HotelBooking[]        @relation("HotelBookingCreatedByUser")
+  hotelDailyLogs       HotelDailyLog[]       @relation("HotelDailyLogCreator")
   hotelInventoryUsages HotelInventoryUsage[] @relation("HotelInventoryUsageCreator")
-  cashRegisterShifts CashRegisterShift[]
+  cashRegisterShifts   CashRegisterShift[]
 
   @@index([role])
   @@index([isActive])
@@ -208,9 +208,9 @@ model Customer {
   createdBy String?
   updatedBy String?
 
-  user           User?           @relation("CustomerPortalUser", fields: [userId], references: [id])
-  createdByUser  User?           @relation("CustomerCreatedByUser", fields: [createdBy], references: [id])
-  updatedByUser  User?           @relation("CustomerUpdatedByUser", fields: [updatedBy], references: [id])
+  user           User?                @relation("CustomerPortalUser", fields: [userId], references: [id])
+  createdByUser  User?                @relation("CustomerCreatedByUser", fields: [createdBy], references: [id])
+  updatedByUser  User?                @relation("CustomerUpdatedByUser", fields: [updatedBy], references: [id])
   pets           Pet[]
   appointments   Appointment[]
   invoices       Invoice[]
@@ -232,21 +232,21 @@ model Species {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  breeds    Breed[]
-  pets      Pet[]
+  breeds Breed[]
+  pets   Pet[]
 }
 
 model Breed {
-  id         String    @id @default(cuid())
-  speciesId  String
-  name       String
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  deletedAt  DateTime?
+  id        String    @id @default(cuid())
+  speciesId String
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  species    Species   @relation(fields: [speciesId], references: [id])
-  pets       Pet[]
+  species Species @relation(fields: [speciesId], references: [id])
+  pets    Pet[]
 
   @@unique([speciesId, name])
   @@index([speciesId])
@@ -260,62 +260,62 @@ model Color {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  pets      Pet[]
+  pets Pet[]
 }
 
 model Pet {
-  id               String    @id @default(cuid())
-  customerId       String
-  name             String
-  speciesId        String
-  breedId          String?
-  colorId          String?
-  gender           Gender    @default(UNKNOWN)
-  dateOfBirth      DateTime?
-  isSterile        Boolean   @default(false)
-  microchipNumber  String?   @unique
-  photoUrl         String?
-  notes            String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
-  createdBy        String?
-  updatedBy        String?
+  id              String    @id @default(cuid())
+  customerId      String
+  name            String
+  speciesId       String
+  breedId         String?
+  colorId         String?
+  gender          Gender    @default(UNKNOWN)
+  dateOfBirth     DateTime?
+  isSterile       Boolean   @default(false)
+  microchipNumber String?   @unique
+  photoUrl        String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
 
-  customer         Customer           @relation(fields: [customerId], references: [id])
-  species          Species            @relation(fields: [speciesId], references: [id])
-  breed            Breed?             @relation(fields: [breedId], references: [id])
-  color            Color?             @relation(fields: [colorId], references: [id])
-  createdByUser    User?              @relation("PetCreatedByUser", fields: [createdBy], references: [id])
-  updatedByUser    User?              @relation("PetUpdatedByUser", fields: [updatedBy], references: [id])
-  appointments     Appointment[]
-  vaccinations     VaccinationRecord[]
-  weightHistory    WeightHistory[]
-  allergies        Allergy[]
-  diseaseHistory   DiseaseHistory[]
-  attachments      Attachment[]
-  hotelBookings    HotelBooking[]
+  customer       Customer            @relation(fields: [customerId], references: [id])
+  species        Species             @relation(fields: [speciesId], references: [id])
+  breed          Breed?              @relation(fields: [breedId], references: [id])
+  color          Color?              @relation(fields: [colorId], references: [id])
+  createdByUser  User?               @relation("PetCreatedByUser", fields: [createdBy], references: [id])
+  updatedByUser  User?               @relation("PetUpdatedByUser", fields: [updatedBy], references: [id])
+  appointments   Appointment[]
+  vaccinations   VaccinationRecord[]
+  weightHistory  WeightHistory[]
+  allergies      Allergy[]
+  diseaseHistory DiseaseHistory[]
+  attachments    Attachment[]
+  hotelBookings  HotelBooking[]
 
   @@index([customerId])
   @@index([speciesId])
 }
 
 model VaccinationRecord {
-  id            String    @id @default(cuid())
-  petId         String
-  vaccineName   String
-  date          DateTime
-  nextDueDate   DateTime?
-  batchNumber   String?
-  veterinarian  String?
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
-  createdBy     String?
-  updatedBy     String?
+  id           String    @id @default(cuid())
+  petId        String
+  vaccineName  String
+  date         DateTime
+  nextDueDate  DateTime?
+  batchNumber  String?
+  veterinarian String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  createdBy    String?
+  updatedBy    String?
 
-  pet           Pet       @relation(fields: [petId], references: [id])
+  pet Pet @relation(fields: [petId], references: [id])
 
   @@index([petId])
   @@index([date])
@@ -333,66 +333,66 @@ model WeightHistory {
   createdBy String?
   updatedBy String?
 
-  pet       Pet       @relation(fields: [petId], references: [id])
+  pet Pet @relation(fields: [petId], references: [id])
 
   @@index([petId])
   @@index([date])
 }
 
 model Allergy {
-  id         String    @id @default(cuid())
-  petId      String
-  allergen   String
-  severity   String?
-  notes      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  deletedAt  DateTime?
-  createdBy  String?
-  updatedBy  String?
+  id        String    @id @default(cuid())
+  petId     String
+  allergen  String
+  severity  String?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
 
-  pet        Pet       @relation(fields: [petId], references: [id])
+  pet Pet @relation(fields: [petId], references: [id])
 
   @@index([petId])
 }
 
 model DiseaseHistory {
-  id              String    @id @default(cuid())
-  petId           String
-  diseaseName    String
-  diagnosedDate   DateTime
-  resolvedDate    DateTime?
-  status          String    @default("ACTIVE")
-  notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
-  createdBy       String?
-  updatedBy       String?
+  id            String    @id @default(cuid())
+  petId         String
+  diseaseName   String
+  diagnosedDate DateTime
+  resolvedDate  DateTime?
+  status        String    @default("ACTIVE")
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  createdBy     String?
+  updatedBy     String?
 
-  pet             Pet       @relation(fields: [petId], references: [id])
+  pet Pet @relation(fields: [petId], references: [id])
 
   @@index([petId])
 }
 
 model Attachment {
-  id                String    @id @default(cuid())
-  entityType        String
-  entityId          String
-  petId             String?
-  medicalRecordId   String?
-  fileName          String
-  fileUrl           String
-  mimeType          String
-  fileSize          Int
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  createdBy         String?
-  updatedBy         String?
-  deletedAt         DateTime?
+  id              String    @id @default(cuid())
+  entityType      String
+  entityId        String
+  petId           String?
+  medicalRecordId String?
+  fileName        String
+  fileUrl         String
+  mimeType        String
+  fileSize        Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdBy       String?
+  updatedBy       String?
+  deletedAt       DateTime?
 
-  pet               Pet?           @relation(fields: [petId], references: [id])
-  medicalRecord     MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
+  pet           Pet?           @relation(fields: [petId], references: [id])
+  medicalRecord MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
 
   @@index([entityType, entityId])
   @@index([petId])
@@ -422,30 +422,32 @@ model Appointment {
   @@index([customerId])
   @@index([appointmentDate])
   @@index([status])
+  @@index([deletedAt])
 }
 
 model DoctorSchedule {
-  id               String    @id @default(cuid())
-  doctorId         String
-  scheduleDate     DateTime
-  startTime        String
-  endTime          String
-  breakStartTime   String?
-  breakEndTime     String?
-  status           String    @default("WORKING")
-  maxPatients      Int       @default(10)
-  notes            String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
-  createdBy        String?
-  updatedBy        String?
+  id             String    @id @default(cuid())
+  doctorId       String
+  scheduleDate   DateTime
+  startTime      String
+  endTime        String
+  breakStartTime String?
+  breakEndTime   String?
+  status         String    @default("WORKING")
+  maxPatients    Int       @default(10)
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  createdBy      String?
+  updatedBy      String?
 
   doctor User @relation(fields: [doctorId], references: [id])
 
   @@index([doctorId])
   @@index([scheduleDate])
   @@index([status])
+  @@index([deletedAt])
 }
 
 model Queue {
@@ -472,6 +474,7 @@ model Queue {
   @@index([doctorId])
   @@index([queueDate])
   @@index([status])
+  @@index([deletedAt])
 }
 
 model MedicalRecord {
@@ -487,19 +490,20 @@ model MedicalRecord {
   createdBy     String?
   updatedBy     String?
 
-  appointment   Appointment         @relation(fields: [appointmentId], references: [id])
-  customer      Customer            @relation(fields: [customerId], references: [id])
-  doctor        User?               @relation(fields: [doctorId], references: [id])
-  items         MedicalRecordItem[]
+  appointment       Appointment         @relation(fields: [appointmentId], references: [id])
+  customer          Customer            @relation(fields: [customerId], references: [id])
+  doctor            User?               @relation(fields: [doctorId], references: [id])
+  items             MedicalRecordItem[]
   clinicalDiagnosis Diagnosis?
-  treatmentPlan TreatmentPlan?
-  prescriptions Prescription[]
-  followUps     FollowUp[]
-  soapNote      SoapNote?
-  vitalSigns    VitalSignRecord[]
-  attachments   Attachment[]
+  treatmentPlan     TreatmentPlan?
+  prescriptions     Prescription[]
+  followUps         FollowUp[]
+  soapNote          SoapNote?
+  vitalSigns        VitalSignRecord[]
+  attachments       Attachment[]
 
   @@index([customerId])
+  @@index([deletedAt])
 }
 
 model Diagnosis {
@@ -518,27 +522,27 @@ model Diagnosis {
   createdBy             String?
   updatedBy             String?
 
-  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
-  doctor        User?         @relation(fields: [doctorId], references: [id])
+  medicalRecord MedicalRecord  @relation(fields: [medicalRecordId], references: [id])
+  doctor        User?          @relation(fields: [doctorId], references: [id])
   prescriptions Prescription[]
 
   @@index([medicalRecordId])
 }
 
 model TreatmentPlan {
-  id                          String    @id @default(cuid())
-  medicalRecordId             String    @unique
-  doctorId                    String?
-  medicalTreatment            String?
-  procedure                   String?
-  observation                 String?
+  id                            String    @id @default(cuid())
+  medicalRecordId               String    @unique
+  doctorId                      String?
+  medicalTreatment              String?
+  procedure                     String?
+  observation                   String?
   hospitalizationRecommendation String?
-  followUpRecommendation      String?
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
-  deletedAt                   DateTime?
-  createdBy                   String?
-  updatedBy                   String?
+  followUpRecommendation        String?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+  deletedAt                     DateTime?
+  createdBy                     String?
+  updatedBy                     String?
 
   medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
   doctor        User?         @relation(fields: [doctorId], references: [id])
@@ -547,33 +551,33 @@ model TreatmentPlan {
 }
 
 model Prescription {
-  id              String             @id @default(cuid())
-  medicalRecordId String
-  diagnosisId     String?
-  doctorId        String?
-  productId       String?
+  id               String             @id @default(cuid())
+  medicalRecordId  String
+  diagnosisId      String?
+  doctorId         String?
+  productId        String?
   inventoryBatchId String?
-  medicine        String
-  dosage          String?
-  frequency       String?
-  duration        String?
-  instructions    String?
-  quantity        Int                @default(1)
-  refill          Int                @default(0)
-  warnings        String?
-  status          PrescriptionStatus @default(PRESCRIBED)
-  queueStatus     String             @default("WAITING")
-  queueUpdatedAt  DateTime?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  deletedAt       DateTime?
-  createdBy       String?
-  updatedBy       String?
+  medicine         String
+  dosage           String?
+  frequency        String?
+  duration         String?
+  instructions     String?
+  quantity         Int                @default(1)
+  refill           Int                @default(0)
+  warnings         String?
+  status           PrescriptionStatus @default(PRESCRIBED)
+  queueStatus      String             @default("WAITING")
+  queueUpdatedAt   DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  deletedAt        DateTime?
+  createdBy        String?
+  updatedBy        String?
 
-  medicalRecord  MedicalRecord @relation(fields: [medicalRecordId], references: [id])
-  diagnosis      Diagnosis?    @relation(fields: [diagnosisId], references: [id])
-  doctor         User?         @relation(fields: [doctorId], references: [id])
-  product        Product?      @relation(fields: [productId], references: [id])
+  medicalRecord  MedicalRecord   @relation(fields: [medicalRecordId], references: [id])
+  diagnosis      Diagnosis?      @relation(fields: [diagnosisId], references: [id])
+  doctor         User?           @relation(fields: [doctorId], references: [id])
+  product        Product?        @relation(fields: [productId], references: [id])
   inventoryBatch InventoryBatch? @relation(fields: [inventoryBatchId], references: [id])
 
   @@index([medicalRecordId])
@@ -582,18 +586,18 @@ model Prescription {
 }
 
 model FollowUp {
-  id               String    @id @default(cuid())
-  medicalRecordId  String
-  doctorId         String?
-  nextVisitDate    DateTime?
-  reminder         String?
-  reason           String?
-  status           String    @default("SCHEDULED")
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
-  createdBy        String?
-  updatedBy        String?
+  id              String    @id @default(cuid())
+  medicalRecordId String
+  doctorId        String?
+  nextVisitDate   DateTime?
+  reminder        String?
+  reason          String?
+  status          String    @default("SCHEDULED")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
 
   medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
   doctor        User?         @relation(fields: [doctorId], references: [id])
@@ -603,21 +607,21 @@ model FollowUp {
 }
 
 model SoapNote {
-  id                     String    @id @default(cuid())
-  medicalRecordId        String    @unique
-  doctorId               String?
-  subjective             String?
-  objective              String?
+  id                    String    @id @default(cuid())
+  medicalRecordId       String    @unique
+  doctorId              String?
+  subjective            String?
+  objective             String?
   assessment            String?
-  plan                   String?
-  consultationStartedAt  DateTime?
-  consultationEndedAt    DateTime?
-  isLocked               Boolean   @default(false)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-  deletedAt              DateTime?
-  createdBy              String?
-  updatedBy              String?
+  plan                  String?
+  consultationStartedAt DateTime?
+  consultationEndedAt   DateTime?
+  isLocked              Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+  createdBy             String?
+  updatedBy             String?
 
   medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
   doctor        User?         @relation(fields: [doctorId], references: [id])
@@ -626,21 +630,21 @@ model SoapNote {
 }
 
 model VitalSignRecord {
-  id                String    @id @default(cuid())
-  medicalRecordId   String
-  recordedAt        DateTime  @default(now())
-  temperature       Decimal?  @db.Decimal(5, 2)
-  weight            Decimal?  @db.Decimal(5, 2)
-  heartRate         Int?
-  respiratoryRate   Int?
-  bloodPressure     String?
-  bodyCondition     String?
-  notes             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  deletedAt         DateTime?
-  createdBy         String?
-  updatedBy         String?
+  id              String    @id @default(cuid())
+  medicalRecordId String
+  recordedAt      DateTime  @default(now())
+  temperature     Decimal?  @db.Decimal(5, 2)
+  weight          Decimal?  @db.Decimal(5, 2)
+  heartRate       Int?
+  respiratoryRate Int?
+  bloodPressure   String?
+  bodyCondition   String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
 
   medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
   doctor        User?         @relation(fields: [createdBy], references: [id])
@@ -693,35 +697,37 @@ model Product {
   createdBy     String?
   updatedBy     String?
 
-  batches            InventoryBatch[]
-  stockMovements     StockMovement[]
-  prescriptions      Prescription[]
-  invoiceItems       InvoiceItem[]
-  purchaseOrderItems PurchaseOrderItem[]
-  purchaseRequests   PurchaseRequest[]
-  goodsReceiptItems  GoodsReceiptItem[]
+  batches                InventoryBatch[]
+  stockMovements         StockMovement[]
+  prescriptions          Prescription[]
+  invoiceItems           InvoiceItem[]
+  purchaseOrderItems     PurchaseOrderItem[]
+  purchaseRequests       PurchaseRequest[]
+  goodsReceiptItems      GoodsReceiptItem[]
   warehouseTransferItems WarehouseTransferItem[]
-  stockReturns       StockReturn[]
-  disposals          Disposal[]
-  hotelInventoryUsages HotelInventoryUsage[]
+  stockReturns           StockReturn[]
+  disposals              Disposal[]
+  hotelInventoryUsages   HotelInventoryUsage[]
 
   @@index([name])
   @@index([type])
   @@index([barcode])
+  @@index([deletedAt])
+  @@index([isActive])
 }
 
 model InventoryBatch {
-  id           String    @id @default(cuid())
-  productId    String
-  batchNo      String
-  expiryDate   DateTime?
-  quantity     Int       @default(0)
-  currentQty   Int       @default(0)
-  costPrice    Decimal   @db.Decimal(10, 2)
-  warehouseId  String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id          String    @id @default(cuid())
+  productId   String
+  batchNo     String
+  expiryDate  DateTime?
+  quantity    Int       @default(0)
+  currentQty  Int       @default(0)
+  costPrice   Decimal   @db.Decimal(10, 2)
+  warehouseId String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
   product        Product         @relation(fields: [productId], references: [id])
   warehouse      Warehouse?      @relation(fields: [warehouseId], references: [id])
@@ -733,6 +739,8 @@ model InventoryBatch {
   @@index([productId])
   @@index([expiryDate])
   @@index([warehouseId])
+  @@index([deletedAt])
+  @@index([currentQty])
 }
 
 model Supplier {
@@ -758,44 +766,44 @@ model Supplier {
 }
 
 model Warehouse {
-  id           String    @id @default(cuid())
-  name         String
-  code         String    @unique
-  location     String?
-  isDefault    Boolean   @default(false)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id        String    @id @default(cuid())
+  name      String
+  code      String    @unique
+  location  String?
+  isDefault Boolean   @default(false)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  batches       InventoryBatch[]
-  purchaseOrders PurchaseOrder[]
+  batches          InventoryBatch[]
+  purchaseOrders   PurchaseOrder[]
   purchaseRequests PurchaseRequest[]
-  goodsReceipts GoodsReceipt[]
-  transferFroms WarehouseTransfer[] @relation("TransferFromWarehouse")
-  transferTos   WarehouseTransfer[] @relation("TransferToWarehouse")
-  stockReturns  StockReturn[]
-  disposals     Disposal[]
+  goodsReceipts    GoodsReceipt[]
+  transferFroms    WarehouseTransfer[] @relation("TransferFromWarehouse")
+  transferTos      WarehouseTransfer[] @relation("TransferToWarehouse")
+  stockReturns     StockReturn[]
+  disposals        Disposal[]
 
   @@index([name])
   @@index([isActive])
 }
 
 model PurchaseRequest {
-  id            String    @id @default(cuid())
-  requestNo     String    @unique
-  productId     String
-  warehouseId   String?
-  qty           Int
-  priority      String    @default("NORMAL")
-  requestedBy   String?
-  status        String    @default("PENDING")
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id          String    @id @default(cuid())
+  requestNo   String    @unique
+  productId   String
+  warehouseId String?
+  qty         Int
+  priority    String    @default("NORMAL")
+  requestedBy String?
+  status      String    @default("PENDING")
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  product   Product   @relation(fields: [productId], references: [id])
+  product   Product    @relation(fields: [productId], references: [id])
   warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
 
   @@index([status])
@@ -827,15 +835,15 @@ model GoodsReceipt {
 }
 
 model GoodsReceiptItem {
-  id              String    @id @default(cuid())
-  goodsReceiptId  String
-  productId       String
-  qty             Int
-  unitPrice       Decimal   @db.Decimal(10, 2)
-  batchNo         String?
-  expiryDate      DateTime?
-  notes           String?
-  createdAt       DateTime  @default(now())
+  id             String    @id @default(cuid())
+  goodsReceiptId String
+  productId      String
+  qty            Int
+  unitPrice      Decimal   @db.Decimal(10, 2)
+  batchNo        String?
+  expiryDate     DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
 
   goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id])
   product      Product      @relation(fields: [productId], references: [id])
@@ -858,8 +866,8 @@ model WarehouseTransfer {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  fromWarehouse Warehouse?            @relation("TransferFromWarehouse", fields: [fromWarehouseId], references: [id])
-  toWarehouse   Warehouse?            @relation("TransferToWarehouse", fields: [toWarehouseId], references: [id])
+  fromWarehouse Warehouse?              @relation("TransferFromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse?              @relation("TransferToWarehouse", fields: [toWarehouseId], references: [id])
   items         WarehouseTransferItem[]
 
   @@index([status])
@@ -868,13 +876,13 @@ model WarehouseTransfer {
 }
 
 model WarehouseTransferItem {
-  id          String   @id @default(cuid())
-  transferId  String
-  productId   String
-  qty         Int
-  batchNo     String?
-  notes       String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  transferId String
+  productId  String
+  qty        Int
+  batchNo    String?
+  notes      String?
+  createdAt  DateTime @default(now())
 
   transfer WarehouseTransfer @relation(fields: [transferId], references: [id])
   product  Product           @relation(fields: [productId], references: [id])
@@ -884,24 +892,24 @@ model WarehouseTransferItem {
 }
 
 model StockReturn {
-  id            String    @id @default(cuid())
-  returnNo      String    @unique
-  type          String    @default("SUPPLIER")
-  productId     String
-  warehouseId   String?
-  batchId       String?
-  qty           Int
-  reason        String?
-  status        String    @default("REQUESTED")
-  requestedBy   String?
-  approvedBy    String?
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id          String    @id @default(cuid())
+  returnNo    String    @unique
+  type        String    @default("SUPPLIER")
+  productId   String
+  warehouseId String?
+  batchId     String?
+  qty         Int
+  reason      String?
+  status      String    @default("REQUESTED")
+  requestedBy String?
+  approvedBy  String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  product   Product        @relation(fields: [productId], references: [id])
-  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id])
+  product   Product         @relation(fields: [productId], references: [id])
+  warehouse Warehouse?      @relation(fields: [warehouseId], references: [id])
   batch     InventoryBatch? @relation(fields: [batchId], references: [id])
 
   @@index([status])
@@ -910,22 +918,22 @@ model StockReturn {
 }
 
 model Disposal {
-  id            String    @id @default(cuid())
-  disposalNo    String    @unique
-  productId     String
-  warehouseId   String?
-  batchId       String?
-  type          String    @default("EXPIRED")
-  qty           Int
-  reason        String?
-  status        String    @default("POSTED")
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id          String    @id @default(cuid())
+  disposalNo  String    @unique
+  productId   String
+  warehouseId String?
+  batchId     String?
+  type        String    @default("EXPIRED")
+  qty         Int
+  reason      String?
+  status      String    @default("POSTED")
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  product   Product        @relation(fields: [productId], references: [id])
-  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id])
+  product   Product         @relation(fields: [productId], references: [id])
+  warehouse Warehouse?      @relation(fields: [warehouseId], references: [id])
   batch     InventoryBatch? @relation(fields: [batchId], references: [id])
 
   @@index([type])
@@ -933,22 +941,22 @@ model Disposal {
 }
 
 model SupplierInvoice {
-  id                String    @id @default(cuid())
-  invoiceNo         String    @unique
-  supplierId        String?
-  purchaseOrderId   String?
-  status            String    @default("OPEN")
-  dueDate           DateTime?
-  subtotal          Decimal   @db.Decimal(10, 2)
-  tax               Decimal   @default(0) @db.Decimal(10, 2)
-  discount          Decimal   @default(0) @db.Decimal(10, 2)
-  total             Decimal   @db.Decimal(10, 2)
-  paidAmount        Decimal   @default(0) @db.Decimal(10, 2)
-  supplierName      String
-  notes             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  deletedAt         DateTime?
+  id              String    @id @default(cuid())
+  invoiceNo       String    @unique
+  supplierId      String?
+  purchaseOrderId String?
+  status          String    @default("OPEN")
+  dueDate         DateTime?
+  subtotal        Decimal   @db.Decimal(10, 2)
+  tax             Decimal   @default(0) @db.Decimal(10, 2)
+  discount        Decimal   @default(0) @db.Decimal(10, 2)
+  total           Decimal   @db.Decimal(10, 2)
+  paidAmount      Decimal   @default(0) @db.Decimal(10, 2)
+  supplierName    String
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   supplier      Supplier?         @relation(fields: [supplierId], references: [id])
   purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
@@ -960,16 +968,16 @@ model SupplierInvoice {
 }
 
 model SupplierPayment {
-  id                 String    @id @default(cuid())
-  supplierInvoiceId  String
-  supplierId         String?
-  amount             Decimal   @db.Decimal(10, 2)
-  method             String    @default("TRANSFER")
-  referenceNo        String?
-  status             String    @default("SUCCESS")
-  paidAt             DateTime  @default(now())
-  createdAt          DateTime  @default(now())
-  createdBy          String?
+  id                String   @id @default(cuid())
+  supplierInvoiceId String
+  supplierId        String?
+  amount            Decimal  @db.Decimal(10, 2)
+  method            String   @default("TRANSFER")
+  referenceNo       String?
+  status            String   @default("SUCCESS")
+  paidAt            DateTime @default(now())
+  createdAt         DateTime @default(now())
+  createdBy         String?
 
   supplierInvoice SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id])
   supplier        Supplier?       @relation(fields: [supplierId], references: [id])
@@ -997,11 +1005,11 @@ model PurchaseOrder {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
-  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
-  items PurchaseOrderItem[]
+  supplier      Supplier?           @relation(fields: [supplierId], references: [id])
+  warehouse     Warehouse?          @relation(fields: [warehouseId], references: [id])
+  items         PurchaseOrderItem[]
   goodsReceipts GoodsReceipt[]
-  invoices SupplierInvoice[]
+  invoices      SupplierInvoice[]
 
   @@index([status])
   @@index([supplierId])
@@ -1064,41 +1072,43 @@ model RateLimitEntry {
 }
 
 model Invoice {
-  id           String        @id @default(cuid())
-  invoiceNo    String        @unique
-  customerId   String
-  status       InvoiceStatus @default(PENDING)
-  source       InvoiceSource @default(CLINIC)
-  subtotal     Decimal       @db.Decimal(10, 2)
-  tax          Decimal       @db.Decimal(10, 2)
-  discount     Decimal       @db.Decimal(10, 2)
-  total        Decimal       @db.Decimal(10, 2)
-  paidAmount   Decimal       @default(0) @db.Decimal(10, 2)
-  dueDate      DateTime?
-  paymentTerms String?
-  notes        String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  deletedAt    DateTime?
-  createdBy    String?
-  updatedBy    String?
-  cashierId     String?
-  receiptNo     String?
-  voucherCode   String?
-  voucherDiscount Decimal?      @db.Decimal(10, 2)
-  membershipDiscount Decimal?    @db.Decimal(10, 2)
-  promotionCode  String?
-  promotionDiscount Decimal?    @db.Decimal(10, 2)
+  id                 String        @id @default(cuid())
+  invoiceNo          String        @unique
+  customerId         String
+  status             InvoiceStatus @default(PENDING)
+  source             InvoiceSource @default(CLINIC)
+  subtotal           Decimal       @db.Decimal(10, 2)
+  tax                Decimal       @db.Decimal(10, 2)
+  discount           Decimal       @db.Decimal(10, 2)
+  total              Decimal       @db.Decimal(10, 2)
+  paidAmount         Decimal       @default(0) @db.Decimal(10, 2)
+  dueDate            DateTime?
+  paymentTerms       String?
+  notes              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  deletedAt          DateTime?
+  createdBy          String?
+  updatedBy          String?
+  cashierId          String?
+  receiptNo          String?
+  voucherCode        String?
+  voucherDiscount    Decimal?      @db.Decimal(10, 2)
+  membershipDiscount Decimal?      @db.Decimal(10, 2)
+  promotionCode      String?
+  promotionDiscount  Decimal?      @db.Decimal(10, 2)
 
-  customer      Customer      @relation(fields: [customerId], references: [id])
-  createdByUser User?         @relation("InvoiceCreatedByUser", fields: [createdBy], references: [id])
-  updatedByUser User?         @relation("InvoiceUpdatedByUser", fields: [updatedBy], references: [id])
+  customer      Customer             @relation(fields: [customerId], references: [id])
+  createdByUser User?                @relation("InvoiceCreatedByUser", fields: [createdBy], references: [id])
+  updatedByUser User?                @relation("InvoiceUpdatedByUser", fields: [updatedBy], references: [id])
   items         InvoiceItem[]
   payments      Payment[]
   loyaltyPoints LoyaltyPointLedger[]
 
   @@index([customerId])
   @@index([status])
+  @@index([deletedAt])
+  @@index([createdAt])
 }
 
 model InvoiceItem {
@@ -1135,32 +1145,32 @@ model Payment {
 }
 
 model CustomerMembership {
-  id                 String    @id @default(cuid())
-  customerId         String    @unique
-  tier               String    @default("STANDARD")
-  status             String    @default("ACTIVE")
-  discountPercent    Int       @default(0)
-  points             Int       @default(0)
-  pointsExpiryDate   DateTime?
-  lastActivityAt     DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  createdBy          String?
-  updatedBy          String?
+  id               String    @id @default(cuid())
+  customerId       String    @unique
+  tier             String    @default("STANDARD")
+  status           String    @default("ACTIVE")
+  discountPercent  Int       @default(0)
+  points           Int       @default(0)
+  pointsExpiryDate DateTime?
+  lastActivityAt   DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdBy        String?
+  updatedBy        String?
 
   customer Customer @relation(fields: [customerId], references: [id])
 }
 
 model LoyaltyPointLedger {
-  id          String   @id @default(cuid())
-  customerId  String
-  invoiceId   String?
-  entryType   String
-  amount      Int
+  id           String   @id @default(cuid())
+  customerId   String
+  invoiceId    String?
+  entryType    String
+  amount       Int
   balanceAfter Int
-  reason      String?
-  createdAt   DateTime @default(now())
-  createdBy   String?
+  reason       String?
+  createdAt    DateTime @default(now())
+  createdBy    String?
 
   customer Customer @relation(fields: [customerId], references: [id])
   invoice  Invoice? @relation(fields: [invoiceId], references: [id])
@@ -1170,57 +1180,57 @@ model LoyaltyPointLedger {
 }
 
 model Voucher {
-  id                  String    @id @default(cuid())
-  code                String    @unique
-  description         String?
-  type                String    @default("PERCENTAGE")
-  value               Int       @default(0)
-  minPurchase         Decimal   @default(0) @db.Decimal(10, 2)
-  maxDiscount         Decimal?  @db.Decimal(10, 2)
-  usageLimit          Int?
-  usageCount          Int       @default(0)
-  expiresAt           DateTime?
+  id                   String    @id @default(cuid())
+  code                 String    @unique
+  description          String?
+  type                 String    @default("PERCENTAGE")
+  value                Int       @default(0)
+  minPurchase          Decimal   @default(0) @db.Decimal(10, 2)
+  maxDiscount          Decimal?  @db.Decimal(10, 2)
+  usageLimit           Int?
+  usageCount           Int       @default(0)
+  expiresAt            DateTime?
   applicableCustomerId String?
-  applicableProductId String?
-  applicableCategory  String?
-  isActive            Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  applicableProductId  String?
+  applicableCategory   String?
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }
 
 model Promotion {
-  id                  String    @id @default(cuid())
-  name                String
-  code                String?
-  type                String    @default("PERCENTAGE")
-  value               Int       @default(0)
-  minPurchase         Decimal   @default(0) @db.Decimal(10, 2)
-  maxDiscount         Decimal?  @db.Decimal(10, 2)
-  startsAt            DateTime?
-  endsAt              DateTime?
-  usageLimit          Int?
-  usageCount          Int       @default(0)
-  isAuto              Boolean   @default(false)
-  isActive            Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  name        String
+  code        String?
+  type        String    @default("PERCENTAGE")
+  value       Int       @default(0)
+  minPurchase Decimal   @default(0) @db.Decimal(10, 2)
+  maxDiscount Decimal?  @db.Decimal(10, 2)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  usageLimit  Int?
+  usageCount  Int       @default(0)
+  isAuto      Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model CashRegisterShift {
-  id               String    @id @default(cuid())
-  cashierId        String
-  status           String    @default("OPEN")
-  openingBalance   Decimal   @default(0) @db.Decimal(10, 2)
-  cashIn           Decimal   @default(0) @db.Decimal(10, 2)
-  cashOut          Decimal   @default(0) @db.Decimal(10, 2)
-  expectedBalance  Decimal   @default(0) @db.Decimal(10, 2)
-  closingBalance   Decimal?  @db.Decimal(10, 2)
-  difference       Decimal?  @db.Decimal(10, 2)
-  openedAt         DateTime  @default(now())
-  closedAt         DateTime?
-  notes            String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  cashierId       String
+  status          String    @default("OPEN")
+  openingBalance  Decimal   @default(0) @db.Decimal(10, 2)
+  cashIn          Decimal   @default(0) @db.Decimal(10, 2)
+  cashOut         Decimal   @default(0) @db.Decimal(10, 2)
+  expectedBalance Decimal   @default(0) @db.Decimal(10, 2)
+  closingBalance  Decimal?  @db.Decimal(10, 2)
+  difference      Decimal?  @db.Decimal(10, 2)
+  openedAt        DateTime  @default(now())
+  closedAt        DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   cashier User @relation(fields: [cashierId], references: [id])
 
@@ -1229,37 +1239,37 @@ model CashRegisterShift {
 }
 
 model HotelRoomType {
-  id           String    @id @default(cuid())
-  name         String
-  description  String?
-  baseRate     Decimal   @db.Decimal(10, 2)
-  capacity     Int       @default(1)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  baseRate    Decimal   @db.Decimal(10, 2)
+  capacity    Int       @default(1)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
-  rooms        HotelRoom[]
-  bookings     HotelBooking[]
+  rooms    HotelRoom[]
+  bookings HotelBooking[]
 
   @@index([name])
 }
 
 model HotelRoom {
-  id              String    @id @default(cuid())
-  roomNo          String    @unique
-  name            String
-  type            String
-  roomTypeId      String?
-  ratePerNight    Decimal   @db.Decimal(10, 2)
-  capacity        Int       @default(1)
-  status          String    @default("AVAILABLE")
-  cleaningStatus  String    @default("CLEAN")
-  lastCleanedAt   DateTime?
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  id             String    @id @default(cuid())
+  roomNo         String    @unique
+  name           String
+  type           String
+  roomTypeId     String?
+  ratePerNight   Decimal   @db.Decimal(10, 2)
+  capacity       Int       @default(1)
+  status         String    @default("AVAILABLE")
+  cleaningStatus String    @default("CLEAN")
+  lastCleanedAt  DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   roomType HotelRoomType? @relation(fields: [roomTypeId], references: [id])
   bookings HotelBooking[]
@@ -1296,12 +1306,12 @@ model HotelBooking {
   createdBy               String?
   updatedBy               String?
 
-  customer      Customer  @relation(fields: [customerId], references: [id])
-  pet           Pet?      @relation(fields: [petId], references: [id])
-  room          HotelRoom? @relation(fields: [roomId], references: [id])
-  roomType      HotelRoomType? @relation(fields: [roomTypeId], references: [id])
-  createdByUser User?     @relation("HotelBookingCreatedByUser", fields: [createdBy], references: [id])
-  dailyLogs     HotelDailyLog[]
+  customer        Customer              @relation(fields: [customerId], references: [id])
+  pet             Pet?                  @relation(fields: [petId], references: [id])
+  room            HotelRoom?            @relation(fields: [roomId], references: [id])
+  roomType        HotelRoomType?        @relation(fields: [roomTypeId], references: [id])
+  createdByUser   User?                 @relation("HotelBookingCreatedByUser", fields: [createdBy], references: [id])
+  dailyLogs       HotelDailyLog[]
   inventoryUsages HotelInventoryUsage[]
 
   @@index([customerId])
@@ -1309,21 +1319,22 @@ model HotelBooking {
   @@index([status])
   @@index([checkInDate])
   @@index([checkOutDate])
+  @@index([deletedAt])
 }
 
 model HotelDailyLog {
-  id           String    @id @default(cuid())
-  bookingId    String
-  notes        String?
-  feeding      Boolean   @default(false)
-  medication   Boolean   @default(false)
-  walking      Boolean   @default(false)
-  bath         Boolean   @default(false)
-  play         Boolean   @default(false)
-  weight       String?
-  temperature  String?
-  createdAt    DateTime  @default(now())
-  createdBy    String?
+  id          String   @id @default(cuid())
+  bookingId   String
+  notes       String?
+  feeding     Boolean  @default(false)
+  medication  Boolean  @default(false)
+  walking     Boolean  @default(false)
+  bath        Boolean  @default(false)
+  play        Boolean  @default(false)
+  weight      String?
+  temperature String?
+  createdAt   DateTime @default(now())
+  createdBy   String?
 
   booking HotelBooking @relation(fields: [bookingId], references: [id])
   creator User?        @relation("HotelDailyLogCreator", fields: [createdBy], references: [id])
@@ -1332,13 +1343,13 @@ model HotelDailyLog {
 }
 
 model HotelInventoryUsage {
-  id           String    @id @default(cuid())
-  bookingId    String
-  productId    String
-  qty          Int
-  notes        String?
-  createdAt    DateTime  @default(now())
-  createdBy    String?
+  id        String   @id @default(cuid())
+  bookingId String
+  productId String
+  qty       Int
+  notes     String?
+  createdAt DateTime @default(now())
+  createdBy String?
 
   booking HotelBooking @relation(fields: [bookingId], references: [id])
   product Product      @relation(fields: [productId], references: [id])

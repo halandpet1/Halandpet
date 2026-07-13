@@ -2,6 +2,7 @@ import type { Prisma, UserRole } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
+import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
 export async function requireSessionUser() {
@@ -62,6 +63,15 @@ export async function revalidateCustomerViews() {
 export type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
+
+export async function withActionErrorHandling<T>(actionName: string, handler: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+  try {
+    return await handler();
+  } catch (error) {
+    logger.error(`${actionName} failed`, { action: actionName, error });
+    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
+  }
+}
 
 function normalizeFieldErrors(error: z.ZodError): Record<string, string[]> {
   const grouped: Record<string, string[]> = {};

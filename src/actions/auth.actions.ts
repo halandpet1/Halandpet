@@ -4,11 +4,11 @@ import { db } from '@/lib/db';
 import { hashPin, verifyPin } from '@/lib/auth';
 import { getSessionUser, setSessionCookie } from '@/lib/session';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { logger } from '@/lib/logger';
 import { usernameSchema, pinSchema } from '@/validators/common.schema';
 import { ensureDevelopmentSeed, getDevelopmentAuthUser, verifyDevelopmentPin } from '@/lib/dev-auth';
 import { getRoleRedirectPath } from '@/lib/role-access';
 import { withActiveFilter } from '@/lib/soft-delete';
+import { withActionErrorHandling } from '@/lib/action-utils';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -17,7 +17,7 @@ const loginSchema = z.object({
 });
 
 export async function loginAction(rawData: FormData | Record<string, unknown>) {
-  try {
+  return withActionErrorHandling('loginAction', async () => {
     const data = rawData instanceof FormData ? Object.fromEntries(rawData.entries()) : rawData;
     const parsed = loginSchema.safeParse(data);
 
@@ -100,14 +100,11 @@ export async function loginAction(rawData: FormData | Record<string, unknown>) {
         mustChangePin: false,
       },
     };
-  } catch (error) {
-    logger.error('loginAction failed', { action: 'loginAction', error });
-    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
-  }
+  });
 }
 
 export async function changePinAction(rawData: FormData | Record<string, unknown>) {
-  try {
+  return withActionErrorHandling('changePinAction', async () => {
     const data = rawData instanceof FormData ? Object.fromEntries(rawData.entries()) : rawData;
     const parsed = z.object({ currentPin: pinSchema, newPin: pinSchema }).safeParse(data);
 
@@ -144,9 +141,6 @@ export async function changePinAction(rawData: FormData | Record<string, unknown
     });
 
     return { success: true, data: { updated: true } };
-  } catch (error) {
-    logger.error('changePinAction failed', { action: 'changePinAction', error });
-    return { success: false, error: 'Terjadi kesalahan, coba lagi' };
-  }
+  });
 }
 

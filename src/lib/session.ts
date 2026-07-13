@@ -9,14 +9,20 @@ export type SessionUser = {
 };
 
 const SESSION_COOKIE_NAME = 'haland_session';
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
 function getSessionSecret() {
-  validateProductionEnvironment();
-  const configuredSecret = process.env.SESSION_SECRET;
-  if (!configuredSecret?.trim()) {
-    throw new Error('SESSION_SECRET must be configured');
+  const configuredSecret = process.env.SESSION_SECRET?.trim();
+  if (configuredSecret) {
+    return configuredSecret;
   }
-  return configuredSecret;
+
+  if (process.env.NODE_ENV !== 'production') {
+    return 'dev-session-secret-at-least-32-chars';
+  }
+
+  validateProductionEnvironment();
+  throw new Error('SESSION_SECRET must be configured');
 }
 
 function encodeBase64Url(value: string) {
@@ -63,7 +69,7 @@ function safeEqual(a: string, b: string) {
 }
 
 function getSessionExpiry() {
-  return Math.floor(Date.now() / 1000) + 60 * 60 * 8;
+  return Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS;
 }
 
 export async function encodeSession(session: SessionUser) {
@@ -112,10 +118,11 @@ export async function setSessionCookie(session: SessionUser) {
     name: SESSION_COOKIE_NAME,
     value: token,
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: 'strict',
     secure: isProduction,
     path: '/',
-    maxAge: 60 * 60 * 8,
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    priority: 'high',
     partitioned: isProduction,
   });
 }
@@ -127,10 +134,11 @@ export async function clearSessionCookie() {
     name: SESSION_COOKIE_NAME,
     value: '',
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: 'strict',
     secure: isProduction,
     path: '/',
     expires: new Date(0),
+    priority: 'high',
     partitioned: isProduction,
   });
 }

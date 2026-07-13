@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { loginAction } from '@/actions/auth.actions';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 export function LoginForm() {
   const router = useRouter();
@@ -36,37 +38,36 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       <label className="block text-sm" htmlFor="username">
-        <span className="mb-2 block">Username</span>
-        <input
+        <span className="mb-2 block font-medium text-slate-200">Username</span>
+        <Input
           id="username"
           name="username"
           autoComplete="username"
-          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-4 py-3 outline-none ring-0"
           placeholder="admin_john"
+          required
+          aria-invalid={error ? 'true' : undefined}
         />
       </label>
       <label className="block text-sm" htmlFor="pin">
-        <span className="mb-2 block">PIN</span>
-        <input
+        <span className="mb-2 block font-medium text-slate-200">PIN</span>
+        <Input
           id="pin"
           name="pin"
           type="password"
           inputMode="numeric"
           autoComplete="current-password"
-          className="w-full rounded-lg border border-white/15 bg-slate-900/70 px-4 py-3 outline-none ring-0"
           placeholder="123456"
+          required
+          minLength={4}
+          aria-invalid={error ? 'true' : undefined}
         />
       </label>
-      {error ? <p className="text-sm text-rose-400">{error}</p> : null}
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-      >
+      {error ? <p className="text-sm text-rose-400" role="alert">{error}</p> : null}
+      <Button type="submit" disabled={pending} className="w-full">
         {pending ? 'Memproses...' : 'Masuk'}
-      </button>
+      </Button>
     </form>
   );
 }

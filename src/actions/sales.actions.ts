@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { parseOrFail, requireRole, type ActionResult } from '@/lib/action-utils';
+import { createIdempotencyKey, getCachedResult, setCachedResult } from '@/lib/idempotency';
 import { invoiceBillingSchema, posCheckoutSchema, voidInvoiceSchema } from '@/validators/sales.schema';
 import { allocateFefoBatches } from '@/lib/inventory-utils';
 
@@ -407,6 +408,12 @@ export async function createInvoicePayment(rawData: unknown): Promise<ActionResu
   const parsed = await parseOrFail(paymentSchema, rawData);
   if (!parsed.success) return parsed;
 
+  const idempotencyKey = createIdempotencyKey('createInvoicePayment', { actorId: actor.id, ...parsed.data });
+  const cachedResult = getCachedResult(idempotencyKey);
+  if (cachedResult) {
+    return cachedResult as ActionResult<{ id: string }>;
+  }
+
   const invoice = await db.invoice.findUnique({ where: { id: parsed.data.invoiceId }, select: { id: true, total: true, paidAmount: true, status: true } });
   if (!invoice) return { success: false, error: 'Invoice tidak ditemukan' };
 
@@ -447,7 +454,9 @@ export async function createInvoicePayment(rawData: unknown): Promise<ActionResu
     revalidatePath('/dashboard');
   }
 
-  return { success: true, data: { id: payment.id } };
+  const successResult: ActionResult<{ id: string }> = { success: true, data: { id: payment.id } };
+  setCachedResult(idempotencyKey, successResult);
+  return successResult;
 }
 
 export async function createInvoiceRefund(rawData: unknown): Promise<ActionResult<{ id: string }>> {

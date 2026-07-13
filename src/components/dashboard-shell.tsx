@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { buildBreadcrumbItems } from '@/lib/dashboard-navigation';
 import { getDashboardRoleConfig } from '@/lib/role-access';
 import { cn } from '@/lib/utils';
 
@@ -86,44 +87,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     .map((item) => ({ ...item, icon: iconMap[item.href] ?? Home }));
   const navigationItems = [...navItems, ...extraNavItems];
 
-  const breadcrumbItems = pathname === '/dashboard'
-    ? [{ href: '/dashboard', label: 'Dashboard' }]
-    : pathname
-        .split('/')
-        .filter(Boolean)
-        .reduce<Array<{ href: string; label: string }>>((acc, segment, index) => {
-          const href = `/${pathname.split('/').filter(Boolean).slice(0, index + 1).join('/')}`;
-          const labelMap: Record<string, string> = {
-            dashboard: 'Dashboard',
-            portal: 'Portal',
-            customers: 'Customers',
-            pets: 'My Pets',
-            clinical: 'Clinical',
-            inventory: 'Inventory',
-            pos: 'POS',
-            hotel: 'Hotel',
-            reports: 'Reports',
-            settings: 'Settings',
-            monitoring: 'Monitoring',
-            admin: 'Administration',
-            appointment: 'Appointment',
-            'medical-record': 'Medical Record',
-            prescription: 'Prescription',
-            laboratory: 'Laboratory',
-            vaccination: 'Vaccination',
-            'daily-task': 'Daily Task',
-            'medical-history': 'Medical History',
-            invoice: 'Invoice',
-            profile: 'Profile',
-            payment: 'Payment',
-          };
-          acc.push({ href, label: labelMap[segment] ?? segment.replace(/-/g, ' ') });
-          return acc;
-        }, []);
+  const breadcrumbItems = buildBreadcrumbItems(pathname);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.16),_transparent_28%),linear-gradient(135deg,_#020617_0%,_#0f172a_100%)] text-slate-100">
       <aside
+        id="dashboard-sidebar"
+        aria-label="Primary"
         className={cn(
           'fixed inset-y-0 left-0 z-40 w-72 border-r border-white/10 bg-slate-950/95 p-6 backdrop-blur-xl transition-transform duration-300 lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
@@ -139,7 +109,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
 
-        <nav className="space-y-1.5">
+        <nav aria-label="Primary navigation" className="space-y-1.5">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -149,8 +119,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
+                aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                  'flex items-center justify-between rounded-xl px-3 py-3 text-sm transition',
+                  'flex items-center justify-between rounded-xl px-3 py-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950',
                   isActive
                     ? 'bg-sky-500/15 text-sky-300 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.25)]'
                     : 'text-slate-300 hover:bg-slate-900 hover:text-white',
@@ -171,7 +142,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
           <div className="flex items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setMobileOpen(true)}>
+              <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation menu">
                 <Menu className="h-4 w-4" />
               </Button>
               <div>

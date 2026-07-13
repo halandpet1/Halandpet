@@ -28,6 +28,7 @@ import { adjustLoyaltyPoints, closeCashRegister, createInvoicePayment, createInv
 describe('sales actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    globalThis.__halandpetIdempotencyStore = new Map();
     dbMock.$transaction.mockImplementation(async (callback: (tx: typeof dbMock) => Promise<unknown>) => callback(dbMock));
   });
 
@@ -145,6 +146,21 @@ describe('sales actions', () => {
         entityId: 'payment-1',
       }),
     }));
+  });
+
+  it('reuses the prior successful payment result for duplicate submissions', async () => {
+    getSessionUserMock.mockResolvedValue({ id: 'user-3b', role: 'CASHIER', fullName: 'Kasir' });
+    dbMock.user.findUnique.mockResolvedValue({ id: 'user-3b', role: 'CASHIER', isActive: true, deletedAt: null });
+    dbMock.invoice.findUnique.mockResolvedValue({ id: 'invoice-idempotent', total: 3000, paidAmount: 1000, status: 'PARTIAL' });
+    dbMock.payment.create.mockResolvedValue({ id: 'payment-idempotent' });
+
+    const first = await createInvoicePayment({ invoiceId: 'invoice-idempotent', method: 'CASH', amount: 2000, referenceNo: 'TX-1' });
+    const second = await createInvoicePayment({ invoiceId: 'invoice-idempotent', method: 'CASH', amount: 2000, referenceNo: 'TX-1' });
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(first).toEqual(second);
+    expect(dbMock.payment.create).toHaveBeenCalledTimes(1);
   });
 
   it('creates a refund and rolls stock back', async () => {
